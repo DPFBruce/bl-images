@@ -1,0 +1,41 @@
+/* (BL) Images — public signing page */
+:root { --red: #C82500; --ink: #1c2333; --muted: #5b6573; --line: #e3e7ec; --gold: #9C7C3A; --cream: #f7f4ef; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--cream); color: var(--ink); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+.bls { max-width: 760px; margin: 0 auto; padding: 28px 16px 70px; }
+.bls-h { border-bottom: 3px solid var(--red); padding-bottom: 12px; margin-bottom: 22px; }
+.bls-org { color: var(--gold); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; font-size: 12.5px; }
+h1 { font-size: 26px; margin: 4px 0 0; line-height: 1.25; }
+.bls-lbl { font-weight: 700; margin: 0 0 8px; }
+.bls-help { color: var(--muted); font-size: 14.5px; margin: 0 0 10px; }
+.bls-msg { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+.bls-ok { border-color: #1a7f5a; }
+.bls-imgs, .bls-up, .bls-doc { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-bottom: 18px; }
+.bls-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.bls-grid img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 8px; display: block; }
+.bls-text { white-space: pre-wrap; font-size: 15px; line-height: 1.65; max-height: 420px; overflow-y: auto; padding-right: 6px; }
+.bls-ver { color: var(--muted); font-size: 12.5px; margin: 10px 0 0; }
+.bls-drop { display: block; border: 2px dashed #c9c2b4; border-radius: 10px; padding: 20px; text-align: center; cursor: pointer; background: #fcfbf8; font-weight: 600; }
+.bls-drop input { display: none; }
+#bls-uplist { list-style: none; padding: 0; margin: 10px 0 0; font-size: 14.5px; }
+#bls-uplist li { padding: 3px 0; }
+#bls-uplist li.ok { color: #1a7f5a; }
+#bls-uplist li.bad { color: var(--red); }
+.bls-form { display: flex; flex-direction: column; gap: 14px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+.bls-form label { display: flex; flex-direction: column; gap: 5px; font-weight: 600; font-size: 14.5px; }
+.bls-form input[type=text], .bls-form input:not([type]), .bls-form input[type=email], .bls-form textarea { font: inherit; font-weight: 400; padding: 10px 12px; border: 1px solid #c9ced6; border-radius: 8px; width: 100%; }
+.bls-chk { flex-direction: row !important; align-items: flex-start; gap: 10px !important; font-weight: 400 !important; }
+.bls-chk input { margin-top: 5px; width: 18px; height: 18px; flex: 0 0 auto; }
+.bls-sigwrap { position: relative; }
+#bls-sig { width: 100%; height: 160px; border: 1px solid #c9ced6; border-radius: 8px; background: #fff; touch-action: none; display: block; background-image: linear-gradient(to right, #d5d9e0 0, #d5d9e0 100%); background-size: calc(100% - 40px) 1px; background-position: 20px 118px; background-repeat: no-repeat; }
+.bls-link { background: none; border: 0; color: var(--red); font: inherit; font-size: 14px; cursor: pointer; text-decoration: underline; padding: 6px 0; }
+.bls-sigwrap .bls-link { position: absolute; right: 10px; top: 36px; }
+.bls-btn { background: var(--red); color: #fff; border: 0; border-radius: 8px; padding: 13px 22px; font: inherit; font-weight: 700; font-size: 16px; cursor: pointer; }
+.bls-btn:disabled { opacity: .6; cursor: default; }
+.bls-err { color: var(--red); font-weight: 600; margin: 0; }
+.bls-foot { color: var(--muted); font-size: 13px; margin-top: 16px; }
+.bls-ov { position: fixed; inset: 0; background: rgba(16,20,28,.6); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+.bls-ovbox { background: #fff; border-radius: 12px; max-width: 760px; width: 100%; max-height: 90vh; display: flex; flex-direction: column; padding: 18px; gap: 12px; }
+.bls-ovbox h2 { margin: 0; font-size: 18px; }
+.bls-ovbox .bls-text { max-height: none; flex: 1; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fbfaf7; }
+.bls-ovrow { display: flex; justify-content: space-between; align-items: center; gap: 12px; }

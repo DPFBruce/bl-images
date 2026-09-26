@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>(BL) Images — Guide</title>
+<style>
+  :root{ --red:#C82500; --navy:#2A4A88; --ink:#1c2333; --muted:#5b6573; --line:#e3e7ec; --card:#fff; --page:#f4f6f9; --gold:#9C7C3A; --green:#1a7f5a; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; color:var(--ink); background:var(--page); line-height:1.6; }
+  .wrap{ max-width:840px; margin:0 auto; padding:32px 22px 80px; }
+  header{ border-bottom:3px solid var(--red); padding-bottom:14px; margin-bottom:26px; }
+  h1{ font-size:26px; margin:0 0 4px; } h1 .b{ color:var(--red); }
+  .sub{ color:var(--muted); font-size:14px; }
+  h2{ font-size:19px; margin:34px 0 10px; padding-top:8px; border-top:1px solid var(--line); }
+  h3{ font-size:15px; margin:20px 0 6px; color:var(--navy); }
+  p,li{ font-size:14.5px; }
+  code{ background:#eef1f5; border:1px solid var(--line); border-radius:4px; padding:1px 6px; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  pre{ background:#1c2333; color:#e8ecf2; border-radius:8px; padding:12px 14px; overflow-x:auto; font-size:12.5px; }
+  .tag{ display:inline-block; background:var(--navy); color:#fff; font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; padding:2px 8px; border-radius:999px; vertical-align:middle; }
+  .note{ border-left:4px solid var(--gold); background:#fbf7ee; padding:10px 14px; border-radius:0 8px 8px 0; margin:14px 0; font-size:14px; }
+  .warn{ border-left-color:var(--red); background:#fdf0ee; }
+  table{ border-collapse:collapse; width:100%; margin:12px 0; font-size:13.5px; background:#fff; }
+  th,td{ border:1px solid var(--line); padding:7px 10px; text-align:left; vertical-align:top; }
+  th{ background:#eef1f5; }
+  .pill{ display:inline-block; padding:1px 9px; border-radius:999px; font-size:11px; font-weight:700; color:#fff; }
+  ol,ul{ padding-left:22px; } li{ margin:4px 0; }
+  .toc{ columns:2; font-size:14px; background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px 18px 12px 34px; }
+  @media (max-width:600px){ .toc{ columns:1; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="b">(BL)</span> Images <span class="tag">Guide</span> <span class="tag" style="background:#1c2333;" id="ver">v1.0.0</span></h1>
+    <div class="sub">Find, import and manage images DPF can defend using — with professional credits and a tamper-evident record of where every image came from.</div>
+  </header>
+
+  <ol class="toc">
+    <li><a href="#tiers">The two safe tiers</a></li>
+    <li><a href="#find">Finding &amp; importing</a></li>
+    <li><a href="#upload">Uploading your own</a></li>
+    <li><a href="#record">What gets recorded</a></li>
+    <li><a href="#library">The Library &amp; each image</a></li>
+    <li><a href="#releases">Releases (people in photos)</a></li>
+    <li><a href="#credits">Credits &amp; captions</a></li>
+    <li><a href="#tools">Tools</a></li>
+    <li><a href="#audit">License Audit</a></li>
+    <li><a href="#claim">If a claim ever arrives</a></li>
+    <li><a href="#dev">For other plugins</a></li>
+    <li><a href="#setup">Setup &amp; updates</a></li>
+  </ol>
+
+  <h2 id="tiers">1. The two safe tiers</h2>
+  <p>(BL) Images only ever imports images under these licenses. Everything else is filtered out of search <em>and</em> re-checked on the server at import.</p>
+  <table>
+    <tr><th>Tier</th><th>Licenses</th><th>What it means</th></tr>
+    <tr><td><span class="pill" style="background:#1a7f5a">Safe anywhere</span></td><td>Public domain, CC0, Public Domain Mark, U.S. government works</td><td>No permission or credit legally required. We credit anyway (good faith, good practice).</td></tr>
+    <tr><td><span class="pill" style="background:#2A4A88">Safe with credit</span></td><td>CC BY 2.0 / 2.5 / 3.0 / 4.0</td><td>Free for any use, including print and fundraising, <strong>as long as the credit travels with it</strong>. The plugin writes it everywhere automatically.</td></tr>
+    <tr><td><span class="pill" style="background:#9C7C3A">Owned / licensed to DPF</span></td><td>Your own uploads and contributor licenses</td><td>Photos DPF took or was given permission to use. Never appears in search.</td></tr>
+  </table>
+  <p><strong>Always blocked:</strong> ShareAlike (BY-SA), NonCommercial (any NC), NoDerivatives (any ND), GFDL, "unknown", fair use. Flickr results are excluded by default because their licenses are self-declared by uploaders (Settings can turn them on, not recommended). Unsplash, Pexels and Pixabay aren't sources: their licenses aren't public-domain or CC BY, and their photos come with no model releases.</p>
+
+  <h2 id="find">2. Finding &amp; importing</h2>
+  <ol>
+    <li><strong>(BL) Images → Find &amp; Import</strong> (or the <strong>"(BL) Images — find free images"</strong> tab inside any WordPress/Elementor image picker).</li>
+    <li>Search. Results come from <strong>Openverse</strong> (Smithsonian, The Met, NASA, Library-of-Congress-era photos via rawpixel, Cleveland &amp; Brooklyn museums, Europeana…) and <strong>Wikimedia Commons</strong>. Filter by tier, shape and kind.</li>
+    <li>Click images to select them. <em>In library</em> means we already have it — click to use it.</li>
+    <li>Optional: add context for Claude ("Folsom Prison, 1950s; for an article on wrongful convictions") — better alt text.</li>
+    <li><strong>Import</strong>. Each image goes through: download original → fingerprint → snapshot the source page → WebP → Claude writes alt text/title/description and checks for people → Media Library.</li>
+  </ol>
+  <div class="note">An amber <strong>People</strong> or <strong>Restrictions</strong> note on a result means Wikimedia flags personality rights, a trademark or an insignia. You can still import it for news-context use, but read <a href="#releases">Releases</a> first.</div>
+
+  <h2 id="upload">3. Uploading your own</h2>
+  <p><strong>Find &amp; Import → Upload your own</strong>. You'll be asked:</p>
+  <ul>
+    <li><strong>Right to use</strong>: DPF's own photo · the owner gave permission · public domain (with source URL) · CC BY (with source URL + version).</li>
+    <li><strong>Creator</strong> (required), <strong>copyright holder</strong>, and for permission-based photos <strong>how permission was given</strong> or a linked contributor license.</li>
+    <li><strong>People</strong> in the image, and any signed releases to link.</li>
+    <li>The <strong>responsibility statement</strong>: it's your responsibility to be sure DPF may use the image, and your name, account, IP address and the time are permanently recorded so you can be contacted about it.</li>
+  </ul>
+
+  <h2 id="record">4. What gets recorded (the "sleep well" part)</h2>
+  <table>
+    <tr><th>Evidence</th><th>Why it matters</th></tr>
+    <tr><td>The <strong>source's own API response</strong> stating the license, saved at the moment of import</td><td>Proves what the source said the license was on that date, even if they change it later.</td></tr>
+    <tr><td>A <strong>snapshot of the source web page</strong></td><td>Same, in human-readable form.</td></tr>
+    <tr><td>A <strong>Wayback Machine capture</strong> of the source page</td><td>An independent third party's copy that DPF could not have altered.</td></tr>
+    <tr><td>The <strong>original file</strong>, kept in a private vault, with its <strong>SHA-256 fingerprint</strong> (and Wikimedia's own SHA-1 cross-check)</td><td>Proves exactly which image we received. Also your full-resolution master for print.</td></tr>
+    <tr><td>The <strong>served WebP's fingerprint</strong></td><td>Proves the file on the site is the one we recorded.</td></tr>
+    <tr><td><strong>Rights metadata embedded in the file</strong> (IPTC/XMP: creator, credit, license, copyright notice)</td><td>The credit travels with the file wherever it goes. Removing it can itself be a violation (17 U.S.C. §1202), so we put it back after conversion.</td></tr>
+    <tr><td>Who imported it, when (UTC to the microsecond), from which IP</td><td>Accountability.</td></tr>
+    <tr><td>A <strong>hash-chained ledger</strong> entry, <strong>timestamped daily on the Bitcoin blockchain</strong> via OpenTimestamps</td><td>Editing or deleting any past record breaks the chain, and Tools → Verify detects it. The daily timestamp proves the records existed, unaltered, on that date. Nobody, including DPF, can back-date them.</td></tr>
+  </table>
+
+  <h2 id="library">5. The Library &amp; each image</h2>
+  <p><strong>Library</strong> searches title, alt text, creator, credit and Claude's keywords, with filters for <em>Has issues · No provenance · People need a release · Not used anywhere · Not WebP · Missing alt text</em>. WordPress's own Media Library search also matches alt text, credits and keywords now. Click an image to open its panel:</p>
+  <ul>
+    <li><strong>Focal point</strong>: click the subject. Every cropped slot (sliders, cards, banners) centers on it.</li>
+    <li><strong>Metadata</strong>: title, alt, description, keywords, people status. Or <strong>Rewrite alt with Claude</strong>. Every change is recorded in the ledger. The caption/credit line is automatic.</li>
+    <li><strong>Provenance &amp; license</strong>: everything in section 4, <strong>Download evidence package (.zip)</strong>, and <strong>Download full-resolution original (for print)</strong>.</li>
+    <li><strong>Releases</strong>: link signed releases, or request one for the people in this image.</li>
+    <li><strong>Where it's used</strong>: every page, post, Elementor template and setting, with View / Edit in Elementor links.</li>
+    <li><strong>Replace this image</strong>: swap the file but keep its ID, alt, title, caption, releases, focal point and every page that uses it. <em>Same URL</em> updates pages instantly (a visitor's browser may briefly show the old one). <em>New URL</em> avoids caching entirely by rewriting every reference. The old file is archived in the vault.</li>
+    <li><strong>History</strong>: the image's ledger entries.</li>
+  </ul>
+  <p>Images that were in the library before (BL) Images show <strong>"No provenance"</strong> with a form to record where they came from. If you don't know, consider replacing the image.</p>
+
+  <h2 id="releases">6. Releases: how it's done in real life</h2>
+  <p>A free license covers the <strong>photo's copyright</strong>, not the <strong>person in it</strong>. Using someone's recognizable face alongside advocacy or fundraising can imply they endorse it. Professionals handle that three ways, and so does this plugin:</p>
+  <h3>Photo &amp; Likeness Release (model release)</h3>
+  <p>For anyone <strong>featured</strong>: a speaker portrait, an honoree, an exoneree's story, a donor in an ad. <strong>Releases → New release</strong>, pick <em>Photo &amp; Likeness Release</em>, enter name + email, link the image(s), then <strong>Email link</strong> (or <strong>Copy signing link</strong> to text it). They see the images and the release, can add limitations, type their legal name, draw a signature, consent to e-signing, <strong>review the exact final text</strong>, and sign. They get a signed copy by email. You get a notification plus a certificate in the vault. The linked images switch to <em>Release on file</em>.</p>
+  <p><strong>Minors:</strong> tick "The person pictured is a minor". A parent or guardian signs and states their relationship.</p>
+  <h3>Photo Contribution License</h3>
+  <p>For people who <strong>give DPF photos</strong> (a volunteer photographer, a family, a partner). Their signing page lets them upload the photos. Each file's fingerprint is written into the license they sign, so the license covers <em>exactly</em> those files. Then import each photo from the release's panel. It arrives as <em>Owned / licensed to DPF</em>, credited "Photo courtesy of …".</p>
+  <h3>Event Photography Notice (Awards Dinner, rallies, webinars)</h3>
+  <p>Nobody collects 300 signatures at a gala. The accepted practice is <strong>notice</strong>: a line in the registration/ticket terms, a sign at the entrance, an announcement, plus a way to <strong>opt out</strong> (a colored sticker or lanyard). Create an <em>Event Photography Notice</em> record, tick how notice was given, attach a photo of the signage and a screenshot of the registration terms, and note any opt-outs. Link the event's photos to it. <strong>Tip:</strong> anyone you'll <em>feature</em> individually (an honoree's portrait on a fundraising mailer) should still sign a likeness release.</p>
+  <h3>Paper releases</h3>
+  <p>Create the release with method <em>Paper</em>, then <strong>Attach file</strong> with the scan or phone photo of the signed form. That marks it signed and fingerprints the scan.</p>
+  <h3>Editorial / newsworthy</h3>
+  <p>Historical and news photos of public events (a 1960s protest, a courthouse press conference) are generally usable in <strong>news and commentary context</strong> without releases. Mark them <em>Editorial / newsworthy use only</em>, and avoid using them in ads or fundraising appeals that could imply the people pictured endorse DPF.</p>
+  <h3>Revocation</h3>
+  <p>Releases are irrevocable, but the template promises DPF will honor a written request to stop <em>new</em> uses. Use <strong>Revoke (stop new uses)</strong>. Linked images are flagged in the audit.</p>
+  <div class="note warn">The release templates (Releases → Edit release templates) are solid plain-English starting points modeled on common nonprofit practice. <strong>Have DPF's counsel review them once.</strong> Every edit creates a new version, and signed releases keep the exact text their signer saw.</div>
+
+  <h2 id="credits">7. Credits &amp; captions</h2>
+  <ul>
+    <li><strong>Caption</strong>, the photo-desk credit line: <code>Photo: Carol M. Highsmith / Library of Congress · Public domain</code> or <code>Photo: Jane Doe / Wikimedia Commons · CC BY 4.0</code>.</li>
+    <li><strong>Description</strong>, the full Creative Commons "TASL" attribution (Title, Author, Source, License, with links) plus the modification notice CC BY 4.0 requires ("Resized and converted to WebP by Death Penalty Focus").</li>
+    <li><strong>Inside the file</strong>: IPTC/XMP creator, credit, copyright notice and license URL.</li>
+    <li><strong>On hover</strong>: visitors see the credit when they point at a credited image (Settings → Front end).</li>
+    <li><strong>Credits page</strong>: create a page containing <code>[bl_image_credits]</code> (or <code>[bl_image_credits used="yes"]</code> for only images in use). The hover credit links to it.</li>
+  </ul>
+  <div class="note"><strong>Using an image off the website</strong> (print, social, email, video)? Download the original from the image's panel and copy the Caption credit line alongside it. For CC BY, the credit must appear wherever the image does.</div>
+
+  <h2 id="tools">8. Tools</h2>
+  <ul>
+    <li><strong>Usage index</strong>: build it once. It keeps itself current afterwards.</li>
+    <li><strong>Duplicates</strong>: 1) fingerprint images, 2) find duplicates (<em>Exact</em> = identical files, <em>Similar</em> = the same picture at another size or format; confirm by eye), 3) pick the keeper and <strong>Re-point references</strong> (fully undoable), 4) <strong>Remove duplicates</strong> (only those no longer used; files and records are archived first).</li>
+    <li><strong>Convert existing library to WebP</strong>: JPG/PNG/GIF become WebP, pages are updated, the old files stay on disk so outside links keep working. Build the usage index first.</li>
+    <li><strong>Provenance ledger</strong>: <em>Verify the whole ledger</em>, <em>Timestamp now</em>, recent entries.</li>
+    <li><strong>Undo reference changes</strong>: every re-point, replacement and conversion can be rolled back.</li>
+  </ul>
+
+  <h2 id="audit">9. License Audit</h2>
+  <p>A board-ready view of every image: provenance status, tier, license, people status, times used, issues. <strong>Export full audit (CSV)</strong> for your records. Two one-click fixers:</p>
+  <ul>
+    <li><strong>Adopt (BL) Slide Editor Wikimedia imports</strong>: brings older Slide Editor imports into the ledger, re-checks their license today, and flags any outside the safe tiers for replacement.</li>
+    <li><strong>Write missing alt text with Claude</strong>: works across the whole library.</li>
+  </ul>
+
+  <h2 id="claim">10. If a claim ever arrives</h2>
+  <ol>
+    <li>Don't reply yet. Find the image (Library search, or the URL in the letter).</li>
+    <li>Open it → <strong>Download evidence package</strong>. It contains the provenance certificate, the original file, the source's own license statement from the day we took it, the source-page snapshot, the Wayback link, linked signed releases, the served file, and the ledger with instructions for anyone to verify it independently.</li>
+    <li>Tools → <strong>Verify the whole ledger</strong> and note the result.</li>
+    <li>Send the package to DPF's counsel. Most "copyright troll" demands collapse on contact with a documented public-domain or CC license.</li>
+    <li>If the claim has merit, use <strong>Where it's used</strong> to find every placement, and <strong>Replace</strong> the image site-wide in one step.</li>
+  </ol>
+
+  <h2 id="dev">11. For other plugins &amp; themes</h2>
+  <ul>
+    <li>Every <code>wp.media</code> picker (Elementor, Gutenberg, (BL) Slide Editor, (BL) Awards Dinners…) automatically gets the <strong>(BL) Images</strong> tab.</li>
+    <li>JavaScript: <code>BLImages.open({ onSelect: function (atts) { … } })</code>. Each attachment includes id, url, alt, caption, credit, focal point and more.</li>
+    <li>PHP:</li>
+  </ul>
+<pre>$r   = bl_images_search( array( 'q' =&gt; 'courthouse', 'tier' =&gt; 'pd' ) );
+$att = bl_images_import_remote( 'openverse', $r['items'][0]['source_id'] );
+$pos = bl_images_focal( $att['id'] );   // "38% 22%" for object-position
+add_action( 'bl_images_imported', function ( $id, $record ) { /* … */ }, 10, 2 );</pre>
+
+  <h2 id="setup">12. Setup &amp; updates</h2>
+  <ul>
+    <li><strong>Claude</strong>: uses the same Cloudflare Worker as (BL) Slide Editor (its <code>describe</code> mode). Leave Settings → Worker URL blank to borrow Slide Editor's settings. If Claude is unreachable, imports still complete using the source's own description, and the image is flagged for a people review.</li>
+    <li><strong>Evidence vault</strong>: <code>wp-content/uploads/bl-images-vault-…/</code>, blocked from the web. Include it in UpdraftPlus backups (it's inside uploads, so it's included by default).</li>
+    <li><strong>Updates</strong>: new versions ship via GitHub Releases. WordPress shows <strong>Update now</strong> on the Plugins page.</li>
+  </ul>
+</div>
+<script>/* Stamp the guide with the live plugin version passed in as ?v= (falls back to the static label when opened directly). */
+(function(){var m=location.search.match(/[?&]v=([^&#]+)/);if(m){var e=document.getElementById('ver');if(e)e.textContent='v'+decodeURIComponent(m[1]);}})();</script>
+</body>
+</html>
