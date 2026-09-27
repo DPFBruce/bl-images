@@ -56,21 +56,6 @@ function bl_img_dhash( $attachment_id ) {
 	return $hex;
 }
 
-function bl_img_hamming( $a, $b ) {
-	static $pc = null;
-	if ( null === $pc ) {
-		$pc = array();
-		for ( $i = 0; $i < 16; $i++ ) {
-			$pc[ dechex( $i ) ] = substr_count( decbin( $i ), '1' );
-		}
-	}
-	$d = 0;
-	for ( $i = 0; $i < 16; $i++ ) {
-		$d += $pc[ dechex( hexdec( $a[ $i ] ) ^ hexdec( $b[ $i ] ) ) ];
-	}
-	return $d;
-}
-
 /** Batch: hash every image that lacks a current hash. */
 function bl_img_hash_batch( $size = 40 ) {
 	global $wpdb;
@@ -93,6 +78,9 @@ function bl_img_find_duplicates( $threshold = 5 ) {
 		JOIN {$wpdb->postmeta} dh ON dh.post_id = p.ID AND dh.meta_key = '_bl_img_dhash'
 		LEFT JOIN {$wpdb->postmeta} sh ON sh.post_id = p.ID AND sh.meta_key = '_bl_img_cur_sha256'
 		WHERE p.post_type = 'attachment' AND p.post_mime_type LIKE 'image/%' AND dh.meta_value <> 'none'", ARRAY_A );
+
+	bl_img_raise_limits();
+	update_meta_cache( 'post', wp_list_pluck( $rows, 'ID' ) ); // one query instead of 2,000
 
 	// Aspect ratios (from metadata) to guard similar-matches.
 	$ar = array();
@@ -132,16 +120,42 @@ function bl_img_find_duplicates( $threshold = 5 ) {
 			}
 		}
 	}
-	$n = count( $rows );
+	// Similar-matching, fast: hashes become two 32-bit ints; images are sorted by
+	// aspect ratio so each one is only compared with neighbours within 3% (instead
+	// of every other image). Near-blank images (almost no edges → hash ~all 0s or
+	// all 1s) are skipped — they'd all "match" each other falsely.
+	static $pc8 = null;
+	if ( null === $pc8 ) {
+		$pc8 = array();
+		for ( $i = 0; $i < 256; $i++ ) {
+			$pc8[ $i ] = substr_count( decbin( $i ), '1' );
+		}
+	}
+	$bits = function ( $x ) use ( $pc8 ) {
+		return $pc8[ $x & 255 ] + $pc8[ ( $x >> 8 ) & 255 ] + $pc8[ ( $x >> 16 ) & 255 ] + $pc8[ ( $x >> 24 ) & 255 ];
+	};
+	$cand = array();
+	foreach ( $rows as $r ) {
+		if ( ! $ar[ $r['ID'] ] || 16 !== strlen( $r['dh'] ) ) {
+			continue;
+		}
+		$hi  = hexdec( substr( $r['dh'], 0, 8 ) );
+		$lo  = hexdec( substr( $r['dh'], 8, 8 ) );
+		$pop = $bits( $hi ) + $bits( $lo );
+		if ( $pop < 6 || $pop > 58 ) {
+			continue;
+		}
+		$cand[] = array( 'id' => $r['ID'], 'ar' => $ar[ $r['ID'] ], 'hi' => $hi, 'lo' => $lo );
+	}
+	usort( $cand, function ( $a, $b ) { return $a['ar'] < $b['ar'] ? -1 : ( $a['ar'] > $b['ar'] ? 1 : 0 ); } );
+	$n = count( $cand );
 	for ( $i = 0; $i < $n; $i++ ) {
-		for ( $j = $i + 1; $j < $n; $j++ ) {
-			$a = $rows[ $i ];
-			$b = $rows[ $j ];
-			if ( $ar[ $a['ID'] ] && $ar[ $b['ID'] ] && abs( $ar[ $a['ID'] ] - $ar[ $b['ID'] ] ) / $ar[ $a['ID'] ] > 0.03 ) {
-				continue;
-			}
-			if ( $a['dh'] === $b['dh'] || bl_img_hamming( $a['dh'], $b['dh'] ) <= $threshold ) {
-				$union( $a['ID'], $b['ID'], 'similar' );
+		$a   = $cand[ $i ];
+		$max = $a['ar'] * 1.03;
+		for ( $j = $i + 1; $j < $n && $cand[ $j ]['ar'] <= $max; $j++ ) {
+			$b = $cand[ $j ];
+			if ( $bits( $a['hi'] ^ $b['hi'] ) + $bits( $a['lo'] ^ $b['lo'] ) <= $threshold ) {
+				$union( $a['id'], $b['id'], 'similar' );
 			}
 		}
 	}

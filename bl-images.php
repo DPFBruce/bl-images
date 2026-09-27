@@ -3,7 +3,7 @@
  * Plugin Name:       (BL) Images
  * Plugin URI:        https://deathpenalty.org/
  * Description:       Find and import legally safe images (public domain, CC0 and CC BY only) from Openverse and Wikimedia Commons, or upload your own. Every image is converted to optimized WebP, gets professional Alt/Title/Caption/credit metadata (Claude writes the alt text), and carries a tamper-evident provenance record: license, source snapshot, SHA-256 hashes, Wayback Machine capture and a hash-chained ledger. Also: signed model/contributor releases, replace-in-place, where-used, duplicate consolidation, focal points, a credits page, WebP conversion and a license audit.
- * Version:           1.0.1
+ * Version:           1.0.2
  * Author:            Bruce Lisker
  * Requires at least: 6.2
  * Requires PHP:      7.4
@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'BL_IMG_VERSION', '1.0.1' );
+define( 'BL_IMG_VERSION', '1.0.2' );
 define( 'BL_IMG_DIR', plugin_dir_path( __FILE__ ) );
 define( 'BL_IMG_URL', plugin_dir_url( __FILE__ ) );
 define( 'BL_IMG_FILE', __FILE__ );
