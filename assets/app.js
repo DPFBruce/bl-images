@@ -8,7 +8,18 @@
   var C = window.BLIMG || {};
 
   /* ------------------------------------------------------------------ helpers */
-  function api(path, opt) {
+  /* WordPress REST tokens expire after ~12–24h. When a page has sat open that
+   * long, fetch a fresh token (core's admin-ajax "rest-nonce") and retry once. */
+  function renewNonce() {
+    return fetch(C.ajaxUrl + '?action=rest-nonce', { credentials: 'same-origin' }).then(function (r) {
+      return r.text().then(function (t) {
+        t = t.trim();
+        if (!r.ok || !/^[a-f0-9]{10}$/.test(t)) throw new Error('Your WordPress session has ended. Please reload the page and log in again.');
+        C.nonce = t;
+      });
+    });
+  }
+  function api(path, opt, retried) {
     opt = opt || {};
     var init = { method: opt.method || 'GET', credentials: 'same-origin', headers: { 'X-WP-Nonce': C.nonce } };
     if (opt.form) { init.body = opt.form; }
@@ -16,6 +27,9 @@
     return fetch(C.root + path, init).then(function (r) {
       return r.text().then(function (t) {
         var d; try { d = t ? JSON.parse(t) : {}; } catch (e) { throw new Error('Server error (' + r.status + '). ' + t.replace(/<[^>]+>/g, ' ').slice(0, 160)); }
+        if (!r.ok && d && d.code === 'rest_cookie_invalid_nonce' && !retried) {
+          return renewNonce().then(function () { return api(path, opt, true); });
+        }
         if (!r.ok) { throw new Error(d && d.message ? d.message : 'Request failed (' + r.status + ')'); }
         return d;
       });

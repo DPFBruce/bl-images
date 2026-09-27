@@ -50,6 +50,7 @@ function bl_img_js_config() {
 	return array(
 		'root'      => esc_url_raw( rest_url( 'bl-images/v1/' ) ),
 		'nonce'     => wp_create_nonce( 'wp_rest' ),
+		'ajaxUrl'   => admin_url( 'admin-ajax.php' ),
 		'version'   => BL_IMG_VERSION,
 		'isAdmin'   => current_user_can( BL_IMG_CAP_ADMIN ),
 		'user'      => wp_get_current_user()->display_name,
