@@ -24,7 +24,8 @@ function bl_img_is_animated_gif( $file ) {
 	return $b && preg_match_all( '#\x00\x21\xF9\x04.{4}\x00[\x2C\x21]#s', $b ) > 1;
 }
 
-function bl_img_convert_one( $id ) {
+/** $force: convert even when the WebP would be a little larger (used for duplicate keepers, which must end up WebP). */
+function bl_img_convert_one( $id, $force = false ) {
 	$id = (int) $id;
 	bl_img_raise_limits();
 	require_once ABSPATH . 'wp-admin/includes/image.php';
@@ -55,7 +56,7 @@ function bl_img_convert_one( $id ) {
 		return array( 'id' => $id, 'status' => 'error', 'why' => $w->get_error_message() );
 	}
 	$old_bytes = filesize( $file );
-	if ( $w['bytes'] >= $old_bytes && 'image/png' !== $p->post_mime_type ) {
+	if ( ! $force && $w['bytes'] >= $old_bytes && 'image/png' !== $p->post_mime_type ) {
 		@unlink( $new );
 		update_post_meta( $id, '_bl_img_convert_skip', 'larger' );
 		return array( 'id' => $id, 'status' => 'skip', 'why' => 'WebP would be larger.' );

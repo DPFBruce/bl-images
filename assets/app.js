@@ -675,7 +675,7 @@
     // Duplicates
     var dupBox = h('div');
     var dupRes = h('div');
-    dupBox.appendChild(h('p', { class: 'bl-img-muted', text: 'Step 1 fingerprints every image (exact bytes + visual similarity). Step 2 lists groups. For each group pick the keeper, then Re-point (all references → keeper; undoable), then Remove the now-unused duplicates (archived to the vault first).' }));
+    dupBox.appendChild(h('p', { class: 'bl-img-muted', text: 'Step 1 fingerprints every image (exact bytes + visual similarity). Step 2 lists the duplicate groups. Then Consolidate: every reference moves to the keeper (undoable), the keeper is made WebP if it isn\'t already, and the other versions are deleted once nothing uses them (archived to the vault first).' }));
     dupBox.appendChild(h('div', { class: 'bl-img-row' },
       runner('1. Fingerprint images', 'tools/hash', function (d) { return ['Fingerprinted ' + d.hashed + ' · ' + d.remaining + ' left']; }, log),
       btn('2. Find duplicates', function (e) { var b = e.target; busy(b, true, 'Comparing…'); api('tools/duplicates').then(function (d) { busy(b, false); drawGroups(d.groups); }).catch(function (er) { busy(b, false); toast(er.message, true); }); })));
@@ -683,30 +683,66 @@
     function drawGroups(groups) {
       clear(dupRes);
       if (!groups.length) { dupRes.appendChild(h('p', { text: 'No duplicates found. 🎉' })); return; }
-      dupRes.appendChild(h('p', { class: 'bl-img-muted', text: groups.length + ' group(s). Exact = identical files; Similar = same picture at a different size/format — confirm by eye.' }));
-      groups.forEach(function (g, gi) {
-        var keeper = g.keeper;
+      var exactN = groups.filter(function (g) { return g.kind === 'exact'; }).length;
+      // One state object per group: chosen keeper, whether it's included in "Consolidate all", done flag.
+      var S = groups.map(function (g) { return { g: g, keeper: g.keeper, include: g.kind === 'exact', done: false, status: null, box: null, inc: null }; });
+
+      function runGroup(s) {
+        var dups = s.g.members.map(function (m) { return m.id; }).filter(function (x) { return x !== s.keeper; });
+        s.status.textContent = 'Working…'; s.status.className = 'bl-img-muted';
+        return api('tools/consolidate-group', { method: 'POST', body: { keeper: s.keeper, dups: dups } }).then(function (r) {
+          s.done = true; s.box.classList.add('is-done');
+          if (s.inc) s.inc.disabled = true;
+          var webp = r.webp === 'converted' ? 'keeper converted to WebP' : (r.webp === 'already' ? 'keeper already WebP' : 'keeper NOT converted (' + r.webp_note + ')');
+          s.status.className = r.skipped.length || r.webp === 'not converted' ? 'bl-img-flag' : 'bl-img-ok';
+          s.status.textContent = '✓ Kept #' + s.keeper + ' · ' + r.changed + ' reference(s) updated · ' + webp + ' · removed ' + (r.removed.length ? r.removed.map(function (x) { return '#' + x; }).join(', ') : 'none') +
+            (r.skipped.length ? ' · kept (still referenced): ' + r.skipped.map(function (x) { return '#' + x.id + ' — ' + x.why; }).join('; ') : '');
+          return r;
+        }).catch(function (e) { s.status.className = 'bl-img-flag'; s.status.textContent = '✗ ' + e.message; });
+      }
+
+      var allLog = h('div', { class: 'bl-img-muted' });
+      var allBtn = btn('Consolidate all checked groups', function () {
+        var todo = S.filter(function (s) { return s.include && !s.done; });
+        if (!todo.length) { toast('No checked groups left.', true); return; }
+        var n = todo.reduce(function (a, s) { return a + s.g.members.length - 1; }, 0);
+        if (!confirm('For ' + todo.length + ' group(s): point every reference to the chosen keeper, make sure each keeper is WebP, then DELETE the ' + n + ' other version(s) that are no longer referenced.\n\nReference changes can be undone (Tools → Undo). Deleted images are archived in the evidence vault first, but they leave the Media Library.\n\nContinue?')) return;
+        busy(allBtn, true, 'Consolidating…');
+        var i = 0, removed = 0, errors = 0;
+        (function next() {
+          if (i >= todo.length) { busy(allBtn, false); allLog.textContent = 'Done: ' + todo.length + ' group(s), ' + removed + ' duplicate(s) removed' + (errors ? ', ' + errors + ' problem(s) — see red lines below' : '') + '.'; toast('Consolidation complete.'); return; }
+          var s = todo[i++];
+          allLog.textContent = 'Group ' + i + ' of ' + todo.length + '…';
+          s.box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          runGroup(s).then(function (r) { if (r) removed += r.removed.length; else errors++; if (r && (r.skipped.length || r.webp === 'not converted')) errors++; next(); });
+        })();
+      }, 'button-primary');
+      var allEx = btn('Check all', function () { S.forEach(function (s) { if (!s.done) { s.include = true; s.inc.checked = true; } }); });
+      var noneEx = btn('Uncheck similar', function () { S.forEach(function (s) { if (!s.done && s.g.kind !== 'exact') { s.include = false; s.inc.checked = false; } }); });
+
+      dupRes.appendChild(h('div', { class: 'bl-img-note' },
+        h('strong', { text: groups.length + ' group(s): ' + exactN + ' exact, ' + (groups.length - exactN) + ' similar. ' }),
+        'Exact groups (identical files) are checked automatically. Look at each Similar group and tick it only if it really is the same picture. The suggested keeper has provenance, then the most uses, then the most pixels — change it with the radio buttons.'));
+      dupRes.appendChild(h('div', { class: 'bl-img-row' }, allBtn, allEx, noneEx, allLog));
+
+      S.forEach(function (s, gi) {
+        var g = s.g;
         var cards = h('div', { class: 'bl-img-dupcards' });
         g.members.forEach(function (m) {
-          var r = h('input', { type: 'radio', name: 'k' + gi, value: m.id, checked: m.id === keeper, onchange: function () { keeper = m.id; } });
+          var r = h('input', { type: 'radio', name: 'k' + gi, value: m.id, checked: m.id === s.keeper, onchange: function () { s.keeper = m.id; } });
           cards.appendChild(h('label', { class: 'bl-img-dup' }, h('span', { class: 'bl-img-thumb bl-img-thumb--lg', style: { backgroundImage: 'url("' + m.thumb + '")' } }),
             h('span', null, r, ' Keep #' + m.id), h('small', { text: m.title }), h('small', { text: m.width + '×' + m.height + ' · ' + bytes(m.bytes) + ' · ' + m.mime.replace('image/', '') }), h('small', { text: 'Used ' + m.used + '× ' + (m.provenance ? '· provenance ✓' : '') })));
         });
-        var status = h('div', { class: 'bl-img-muted' });
-        var b1 = btn('Re-point references to keeper', function () {
-          var dups = g.members.map(function (m) { return m.id; }).filter(function (x) { return x !== keeper; });
-          busy(b1, true); api('tools/consolidate', { method: 'POST', body: { keeper: keeper, dups: dups } }).then(function (r) {
-            busy(b1, false); status.textContent = r.changed + ' reference(s) moved to #' + keeper + (r.undo ? ' · undo id ' + r.undo : '') + '. Now remove the duplicates.'; b2.disabled = false; b2.dataset.dups = JSON.stringify(dups);
-          }).catch(function (e) { busy(b1, false); toast(e.message, true); });
-        }, 'button-primary');
-        var b2 = btn('Remove duplicates', function () {
-          if (!confirm('Delete the duplicate image(s) from the Media Library? Their files and records are archived in the evidence vault first.')) return;
-          busy(b2, true); api('tools/remove-duplicates', { method: 'POST', body: { dups: JSON.parse(b2.dataset.dups) } }).then(function (r) {
-            busy(b2, false); status.textContent = 'Removed: ' + (r.removed.join(', ') || 'none') + (r.skipped.length ? ' · Skipped: ' + r.skipped.map(function (s) { return '#' + s.id + ' (' + s.why + ')'; }).join(', ') : ''); b2.disabled = true;
-          }).catch(function (e) { busy(b2, false); toast(e.message, true); });
+        s.inc = h('input', { type: 'checkbox', checked: s.include, onchange: function () { s.include = s.inc.checked; } });
+        s.status = h('div', { class: 'bl-img-muted' });
+        var one = btn('Consolidate this group', function () {
+          if (!confirm('Point all references to #' + s.keeper + ', make sure it is WebP, and delete the other version(s) that are no longer referenced?')) return;
+          busy(one, true); runGroup(s).then(function () { busy(one, false); one.disabled = s.done; });
         });
-        b2.disabled = true;
-        dupRes.appendChild(h('div', { class: 'bl-img-dupgroup' }, h('strong', { text: (g.kind === 'exact' ? 'Exact duplicates' : 'Similar images') }), cards, h('div', { class: 'bl-img-row' }, b1, b2), status));
+        s.box = h('div', { class: 'bl-img-dupgroup' },
+          h('label', { class: 'bl-img-chk' }, s.inc, h('strong', { text: g.kind === 'exact' ? 'Exact duplicates — include in Consolidate all' : 'Similar images — include in Consolidate all (only if it\'s the same picture)' })),
+          cards, h('div', { class: 'bl-img-row' }, one), s.status);
+        dupRes.appendChild(s.box);
       });
     }
 

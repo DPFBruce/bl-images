@@ -265,6 +265,47 @@ function bl_img_consolidate( $keeper, $dups ) {
 	return array( 'changed' => $rw['changed'], 'undo' => $rw['undo'], 'remaining' => array_map( function ( $d ) { return array( 'id' => $d, 'used' => bl_img_usage_count( $d ) ); }, array_keys( $id_map ) ) );
 }
 
+/**
+ * One-shot consolidation of a whole group (used by "Consolidate all"):
+ *   1. re-point every reference from the duplicates to the keeper (undoable),
+ *   2. make sure the keeper is WebP (convert it if not — references follow),
+ *   3. archive + delete every duplicate that no longer has any reference.
+ */
+function bl_img_consolidate_group( $keeper, $dups ) {
+	$keeper = (int) $keeper;
+	$dups   = array_values( array_filter( array_diff( array_map( 'intval', (array) $dups ), array( $keeper ) ), 'bl_img_is_image_attachment' ) );
+	if ( ! bl_img_is_image_attachment( $keeper ) ) {
+		return new WP_Error( 'keeper', 'Keeper #' . $keeper . ' is not an image.' );
+	}
+	$out = array( 'keeper' => $keeper, 'changed' => 0, 'undo' => '', 'webp' => 'already', 'webp_note' => '', 'removed' => array(), 'skipped' => array() );
+
+	if ( $dups ) {
+		$c = bl_img_consolidate( $keeper, $dups );
+		if ( is_wp_error( $c ) ) {
+			return $c;
+		}
+		$out['changed'] = $c['changed'];
+		$out['undo']    = $c['undo'];
+	}
+
+	if ( 'image/webp' !== get_post_mime_type( $keeper ) ) {
+		delete_post_meta( $keeper, '_bl_img_convert_skip' );
+		$cv = bl_img_convert_one( $keeper, true );
+		$out['webp']      = 'done' === $cv['status'] ? 'converted' : 'not converted';
+		$out['webp_note'] = isset( $cv['why'] ) ? $cv['why'] : '';
+		if ( 'done' === $cv['status'] ) {
+			$out['changed'] += (int) $cv['refs'];
+		}
+	}
+
+	if ( $dups ) {
+		$rm             = bl_img_remove_duplicates( $dups );
+		$out['removed'] = $rm['removed'];
+		$out['skipped'] = $rm['skipped'];
+	}
+	return $out;
+}
+
 /** Step 2: archive + delete duplicates that no longer have any references. */
 function bl_img_remove_duplicates( $dups ) {
 	$removed = array();

@@ -187,3 +187,4 @@ a.bl-img-badge:hover { color: #fff; filter: brightness(1.1); }
 .bl-img-af { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
 .bl-img-af__credit { color: #1c2333; }
 .bl-img-af__people { color: #5b6573; }
+.bl-img-dupgroup.is-done { opacity: .6; }
