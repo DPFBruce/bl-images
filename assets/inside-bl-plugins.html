@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inside the (BL) Plugin Suite</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A guided tour of the five custom WordPress plugins built for Death Penalty Focus — (BL) Slide Editor, Videos, Images, Awards Dinners, and Code Snippets.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    color-scheme: dark;
+    --ground:#120d16;
+    --ground-2:#181220;
+    --panel:#1f1829;
+    --panel-2:#241c30;
+    --line:rgba(233,220,196,.12);
+    --line-strong:rgba(233,220,196,.22);
+    --cream:#f4ecdd;
+    --cream-dim:#cdc2ae;
+    --muted:#9a8fa2;
+    --gold:#cca552;
+    --red:#e42a45;
+    --red-deep:#b01228;
+    --maxw:1080px;
+    --serif:"Cormorant Garamond","Cormorant",Georgia,"Times New Roman",serif;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+  body{
+    background:var(--ground);
+    color:var(--cream);
+    font-family:var(--sans);
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+  section{position:relative;scroll-margin-top:70px}
+
+  .eyebrow{
+    font-family:var(--mono);
+    font-size:11.5px;letter-spacing:.24em;text-transform:uppercase;
+    color:var(--gold);font-weight:500;
+  }
+  h2{
+    font-family:var(--serif);
+    font-weight:600;
+    font-size:clamp(28px,4.2vw,44px);
+    line-height:1.06;
+    letter-spacing:.005em;
+    color:var(--cream);
+    text-wrap:balance;
+  }
+  .lede{
+    max-width:62ch;color:var(--cream-dim);font-size:clamp(15px,1.7vw,17px);
+    line-height:1.66;
+  }
+
+  /* ---------- HERO ---------- */
+  .hero{
+    position:relative;overflow:hidden;
+    padding:96px 0 64px;
+    background:
+      radial-gradient(120% 90% at 78% 4%, rgba(204,165,82,.14), transparent 46%),
+      radial-gradient(90% 80% at 8% 100%, rgba(180,18,40,.24), transparent 55%),
+      linear-gradient(160deg,#3a0b12 0%, #23111f 42%, #120d16 100%);
+    border-bottom:1px solid var(--line);
+  }
+  .hero::after{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(140% 120% at 50% -10%, transparent 60%, rgba(0,0,0,.34));
+  }
+  .hero .wrap{position:relative;z-index:1}
+  .coin{
+    width:66px;height:66px;border-radius:50%;
+    background:#fff;display:grid;place-items:center;
+    box-shadow:0 6px 22px rgba(0,0,0,.5);
+    font-family:var(--serif);font-weight:700;color:var(--red-deep);
+    font-size:13px;line-height:.92;text-align:center;letter-spacing:.02em;
+    margin-bottom:26px;
+  }
+  .coin span{display:block}
+  .coin .sm{font-size:8px;letter-spacing:.14em;color:#111;font-family:var(--mono);margin-top:2px}
+  .hero h1{
+    font-family:var(--serif);font-weight:600;
+    font-size:clamp(46px,8.4vw,92px);
+    line-height:.96;letter-spacing:-.01em;color:#fbf5ea;
+    text-shadow:0 2px 30px rgba(0,0,0,.35);
+  }
+  .hero h1 .paren{color:var(--gold)}
+  .hero .tag{
+    margin-top:22px;max-width:36ch;
+    font-family:var(--serif);font-size:clamp(20px,2.6vw,27px);
+    line-height:1.32;color:#eaddc4;font-weight:500;font-style:italic;
+  }
+  .hero .sub{
+    margin-top:20px;max-width:60ch;color:#d8c9be;font-size:16px;line-height:1.6;
+  }
+  .metaline{
+    margin-top:34px;display:flex;flex-wrap:wrap;gap:10px 10px;align-items:center;
+    font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;color:#cdb9a0;
+  }
+  .metaline .chip{
+    border:1px solid var(--line-strong);border-radius:999px;padding:5px 12px;
+    background:rgba(0,0,0,.22);color:#e7d9c4;
+  }
+  .metaline .chip b{color:var(--gold);font-weight:600}
+
+  /* ---------- JUMP NAV ---------- */
+  .pnav{position:sticky;top:0;z-index:20;background:rgba(18,13,22,.86);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line)}
+  .pnav .wrap{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;padding-top:11px;padding-bottom:11px}
+  .pnav .lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-right:4px}
+  .pnav a{font-family:var(--mono);font-size:11.5px;color:#e6dcc9;border:1px solid var(--line-strong);
+    border-radius:999px;padding:4px 11px;background:rgba(0,0,0,.2)}
+  .pnav a:hover{border-color:var(--gold);color:var(--gold)}
+
+  /* ---------- STAT BAND ---------- */
+  .stats{
+    display:grid;grid-template-columns:repeat(5,1fr);
+    border-bottom:1px solid var(--line);background:var(--ground-2);
+  }
+  .stat{padding:26px 20px;border-left:1px solid var(--line);text-align:left}
+  .stat:first-child{border-left:0}
+  .stat .n{
+    font-family:var(--serif);font-weight:600;color:var(--cream);
+    font-size:clamp(24px,3.2vw,34px);line-height:1;letter-spacing:.01em;
+    font-variant-numeric:tabular-nums;
+  }
+  .stat .n em{font-style:normal;color:var(--gold);font-size:.7em}
+  .stat .k{margin-top:9px;font-size:12px;color:var(--muted);line-height:1.42}
+  @media(max-width:820px){
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .stat{border-top:1px solid var(--line)}
+    .stat:nth-child(-n+2){border-top:0}
+    .stat:nth-child(odd){border-left:0}
+  }
+
+  /* section rhythm */
+  .band{padding:72px 0}
+  .band .head{margin-bottom:34px;max-width:var(--maxw)}
+  .band .head .eyebrow{display:block;margin-bottom:14px}
+  .band .head .lede{margin-top:14px}
+  .band--alt{background:var(--ground-2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+
+  /* per-plugin section header meta */
+  .pmeta{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+  .pmeta .tag{font-family:var(--mono);font-size:11px;letter-spacing:.04em;border:1px solid var(--line-strong);
+    border-radius:999px;padding:4px 11px;background:rgba(0,0,0,.22);color:#e7d9c4}
+  .pmeta .tag b{color:var(--gold);font-weight:600}
+  .pmeta .tag.live::before{content:"● ";color:#5fd08a}
+  .pname{font-family:var(--serif);font-weight:600;font-size:clamp(30px,5vw,50px);line-height:1;color:#fbf5ea}
+  .pname .paren{color:var(--gold)}
+  .seemore{display:inline-block;margin-top:20px;font-family:var(--mono);font-size:12px;letter-spacing:.04em}
+
+  /* ---------- FEATURE PLATES ---------- */
+  .plates{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+  @media(max-width:980px){.plates{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:560px){.plates{grid-template-columns:1fr}}
+  .plate{
+    position:relative;border-radius:16px;overflow:hidden;
+    padding:22px 20px 24px;min-height:206px;
+    display:flex;flex-direction:column;
+    border:1px solid var(--line);
+    box-shadow:0 10px 30px rgba(0,0,0,.34);
+    color:#f6efe2;
+    isolation:isolate;
+  }
+  .plate::after{content:"";position:absolute;inset:0;z-index:-1;
+    background:linear-gradient(0deg,rgba(0,0,0,.30),transparent 52%)}
+  .g-maroon{background:radial-gradient(120% 120% at 82% 4%,rgba(204,165,82,.16),transparent 46%),linear-gradient(150deg,#5e0e18,#3a0b12 48%,#200a0d)}
+  .g-plum{background:radial-gradient(120% 120% at 82% 4%,rgba(204,165,82,.13),transparent 46%),linear-gradient(150deg,#4a1030,#2a0c1e 50%,#170a15)}
+  .g-teal{background:radial-gradient(120% 120% at 82% 4%,rgba(120,200,190,.14),transparent 46%),linear-gradient(150deg,#0d3b3a,#0a2b2a 50%,#06201f)}
+  .g-navy{background:radial-gradient(120% 120% at 82% 4%,rgba(150,180,255,.14),transparent 46%),linear-gradient(150deg,#17223f,#101a33 50%,#0a0f1f)}
+  .g-forest{background:radial-gradient(120% 120% at 82% 4%,rgba(180,220,170,.12),transparent 46%),linear-gradient(150deg,#1a3a20,#123018 50%,#08160c)}
+  .g-gold{background:radial-gradient(120% 120% at 82% 4%,rgba(204,165,82,.20),transparent 46%),linear-gradient(150deg,#3a3320,#2a2415 50%,#171307)}
+  .g-oxblood{background:radial-gradient(120% 120% at 82% 4%,rgba(220,150,110,.14),transparent 46%),linear-gradient(150deg,#5a2410,#3e1a0c 50%,#1f0c06)}
+  .g-slate{background:radial-gradient(120% 120% at 82% 4%,rgba(170,150,220,.14),transparent 46%),linear-gradient(150deg,#2c2740,#1e1a2e 50%,#12101c)}
+  .plate .kicker{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;
+    color:rgba(255,255,255,.62);margin-bottom:auto
+  }
+  .plate h3{
+    font-family:var(--serif);font-weight:600;font-size:23px;line-height:1.12;
+    margin:16px 0 9px;color:#fbf5ea;text-shadow:0 1px 10px rgba(0,0,0,.35);
+    text-wrap:balance;
+  }
+  .plate p{font-size:13.5px;line-height:1.56;color:#ece0cf}
+  .plate .wow{
+    margin-top:13px;font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;
+    color:var(--gold);display:inline-flex;align-items:center;gap:7px
+  }
+  .plate .wow::before{content:"";width:14px;height:1px;background:var(--gold);display:inline-block}
+
+  /* ---------- UNDER THE HOOD ---------- */
+  .chips{display:flex;flex-wrap:wrap;gap:10px}
+  .chip-tech{
+    font-family:var(--mono);font-size:12px;letter-spacing:.02em;
+    color:#e6dcc9;background:var(--panel);border:1px solid var(--line-strong);
+    border-radius:8px;padding:9px 13px;line-height:1.3;
+  }
+  .chip-tech b{color:var(--gold);font-weight:600}
+
+  /* ---------- STACK ---------- */
+  .stack{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
+  @media(max-width:720px){.stack{grid-template-columns:1fr}}
+  .svc{
+    display:flex;gap:16px;padding:22px;border-radius:14px;
+    background:var(--panel);border:1px solid var(--line);
+  }
+  .svc .dot{
+    flex:0 0 auto;width:44px;height:44px;border-radius:11px;display:grid;place-items:center;
+    font-family:var(--mono);font-size:15px;font-weight:600;color:#120d16;
+  }
+  .svc .d-bunny{background:linear-gradient(150deg,#ff9d2e,#ff6a2b)}
+  .svc .d-cf{background:linear-gradient(150deg,#f7a600,#ff5b2e)}
+  .svc .d-gh{background:linear-gradient(150deg,#d7cdbf,#a99e8d)}
+  .svc .d-wp{background:linear-gradient(150deg,#5aa9e6,#2f6feb)}
+  .svc .d-ov{background:linear-gradient(150deg,#7ad0b4,#38a3c9)}
+  .svc h4{font-size:15px;color:var(--cream);margin-bottom:4px;font-weight:600}
+  .svc p{font-size:12.5px;color:var(--muted);line-height:1.5}
+
+  /* ---------- SCOPE ---------- */
+  .scope{
+    background:
+      radial-gradient(90% 120% at 92% 0%, rgba(180,18,40,.2), transparent 50%),
+      linear-gradient(155deg,#231120,#150e18);
+    border:1px solid var(--line-strong);border-radius:20px;
+    padding:clamp(30px,5vw,52px);
+  }
+  .scope .eyebrow{display:block;margin-bottom:16px}
+  .scope p{max-width:66ch;color:#e3d6c6;font-size:clamp(15px,1.9vw,18px);line-height:1.66}
+  .scope p + p{margin-top:16px}
+  .scope .pull{
+    font-family:var(--serif);font-style:italic;font-size:clamp(19px,2.6vw,26px);
+    color:#f3e7d2;line-height:1.35;
+  }
+  .rule{height:1px;background:var(--line);margin:30px 0}
+
+  /* footer */
+  footer{padding:48px 0 60px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  footer .wrap{display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between;align-items:center}
+  footer .mono{font-family:var(--mono);letter-spacing:.04em}
+  footer b{color:var(--cream-dim);font-weight:600}
+  a{color:var(--gold);text-decoration:none;border-bottom:1px solid transparent}
+  a:hover{border-bottom-color:var(--gold)}
+  a:focus-visible{outline:2px solid var(--gold);outline-offset:3px;border-radius:2px}
+
+  /* reveal */
+  .rise{opacity:0;transform:translateY(16px);transition:opacity .7s ease, transform .7s cubic-bezier(.2,.7,.2,1)}
+  .rise.in{opacity:1;transform:none}
+  @media(prefers-reduced-motion:reduce){.rise{opacity:1;transform:none;transition:none}}
+</style>
+</head>
+<body>
+
+<section class="hero">
+  <div class="wrap">
+    <div class="coin"><span>Death<br>Penalty</span><span class="sm">FOCUS</span></div>
+    <p class="eyebrow">Death Penalty Focus · Custom Software</p>
+    <h1>The <span class="paren">(</span>BL<span class="paren">)</span> Plugin Suite</h1>
+    <p class="tag">Five purpose-built WordPress plugins that behave like products — and cost like open infrastructure.</p>
+    <p class="sub">A self-owned software stack built for Death Penalty Focus. It publishes video to a global CDN, sources and proves legally-safe imagery, builds the home carousel by eye, runs the Awards Dinner pages from a single record, and keeps the site's custom code in one safe place — and every plugin updates itself, straight from GitHub.</p>
+    <div class="metaline">
+      <span class="chip">Built across <b>2026</b></span>
+      <span class="chip"><b>5</b> plugins</span>
+      <span class="chip">Live on <b>deathpenalty.org</b></span>
+      <span class="chip">Designed &amp; built with <b>Claude</b></span>
+    </div>
+  </div>
+</section>
+
+<nav class="pnav" aria-label="Jump to a plugin">
+  <div class="wrap">
+    <span class="lbl">The suite</span>
+    <a href="#slide-editor">Slide Editor</a>
+    <a href="#videos">Videos</a>
+    <a href="#images">Images</a>
+    <a href="#awards">Awards Dinners</a>
+    <a href="#snippets">Code Snippets</a>
+  </div>
+</nav>
+
+<section class="stats" aria-label="The suite at a glance">
+  <div class="stat"><div class="n">5</div><div class="k">purpose-built plugins, each self-owned</div></div>
+  <div class="stat"><div class="n"><em>$</em>0</div><div class="k">recurring SaaS license fees in the stack</div></div>
+  <div class="stat"><div class="n">4</div><div class="k">cloud services wired together</div></div>
+  <div class="stat"><div class="n"><em>~$</em>300<em>+/yr</em></div><div class="k">saved retiring Vimeo &amp; paid plugins</div></div>
+  <div class="stat"><div class="n">1<em>-click</em></div><div class="k">native WordPress updates, from GitHub</div></div>
+</section>
+
+<section class="band">
+  <div class="wrap">
+    <div class="head rise">
+      <span class="eyebrow">The idea</span>
+      <h2>Five plugins, one philosophy.</h2>
+      <p class="lede">Each one replaces something DPF would otherwise rent, host elsewhere, or do by hand — and each is built the same way: the hard engineering is hidden so the day-to-day work stays simple, the admin speaks plain English, and the whole thing updates itself. Nothing here is a black box the organization can't own.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SLIDE EDITOR ============ -->
+<section id="slide-editor" class="band band--alt">
+  <div class="wrap">
+    <div class="head rise">
+      <div class="pmeta">
+        <span class="tag live">Live</span>
+        <span class="tag">v<b>1.30.0</b></span>
+        <span class="tag">shortcode <b>[BL_slider]</b></span>
+      </div>
+      <h2 class="pname"><span class="paren">(</span>BL<span class="paren">)</span> Slide Editor</h2>
+      <p class="lede">The home carousel, built by eye. A visual editor with side-by-side desktop and mobile previews, where every slide is composed, themed, and timed without touching a line of code.</p>
+    </div>
+    <div class="plates">
+      <article class="plate g-navy rise">
+        <div class="kicker">Authoring</div>
+        <h3>Compose, don't configure</h3>
+        <p>Each slide's controls are grouped by intent — Contents, Sizes &amp; Styles, Spacing, Border — with live desktop and mobile previews that update as you type, and a copy-fit meter that warns before text overflows.</p>
+        <span class="wow">Dual live preview · copy-fit meter</span>
+      </article>
+      <article class="plate g-maroon rise">
+        <div class="kicker">Design</div>
+        <h3>Gradients that breathe</h3>
+        <p>25 code-generated themes, each shown as a split light/dark swatch. Per-slide and per-view, a gradient can Lighten to a soft pastel, Invert its direction, or Animate — a slow living drift tuned by eye.</p>
+        <span class="wow">Per-view theming · living gradients</span>
+      </article>
+      <article class="plate g-gold rise">
+        <div class="kicker">AI</div>
+        <h3>A first draft on request</h3>
+        <p>Auto-fit reshapes a slide's copy into polished, on-brand text; Generate builds a whole slide from an article — both written by Claude through a Cloudflare Worker, always pending a human yes.</p>
+        <span class="wow">Claude via edge worker · review first</span>
+      </article>
+      <article class="plate g-slate rise">
+        <div class="kicker">Craft</div>
+        <h3>Nothing to remember</h3>
+        <p>Full-bleed background photos with focal points, per-slide borders and typography, mobile overrides, shuffle order, backup &amp; restore, an activity log — and saving clears the site cache for you.</p>
+        <span class="wow">Wikimedia import · auto cache-purge</span>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============ VIDEOS ============ -->
+<section id="videos" class="band">
+  <div class="wrap">
+    <div class="head rise">
+      <div class="pmeta">
+        <span class="tag live">Live</span>
+        <span class="tag">v<b>1.16.86</b></span>
+        <span class="tag">shortcode <b>[bl_videos]</b></span>
+      </div>
+      <h2 class="pname"><span class="paren">(</span>BL<span class="paren">)</span> Videos</h2>
+      <p class="lede">A video library that behaves like a product. Upload goes straight to a global CDN, the words stay where search engines can read them, and the busywork is quietly automated away.</p>
+    </div>
+    <div class="plates">
+      <article class="plate g-maroon rise">
+        <div class="kicker">Upload</div>
+        <h3>Straight to the cloud</h3>
+        <p>Video goes from the browser directly to Bunny with a resumable, signed upload — big files survive a dropped connection. WordPress keeps only a lightweight link, and the secret key never leaves the server.</p>
+        <span class="wow">TUS · signed tokens · zero server strain</span>
+      </article>
+      <article class="plate g-navy rise">
+        <div class="kicker">Automation</div>
+        <h3>It writes its own first draft</h3>
+        <p>The moment a video finishes, a Cloudflare Worker transcribes the audio and hands it to Claude, which drafts a house-style title, an SEO description, and the right category — waiting for a human yes.</p>
+        <span class="wow">Whisper → Claude · runs on a schedule</span>
+      </article>
+      <article class="plate g-plum rise">
+        <div class="kicker">Design</div>
+        <h3>Every thumbnail, on brand</h3>
+        <p>Instead of a black video frame, each card renders as a cinematic gradient poster — logo, title, participants — sized to its own content and uniform across the page.</p>
+        <span class="wow">Programmatic · container-query type</span>
+      </article>
+      <article class="plate g-forest rise">
+        <div class="kicker">Discoverability</div>
+        <h3>Captions become search traffic</h3>
+        <p>Bunny's transcripts surface as a readable, collapsible panel on the page — the part Google can index — plus structured video data for rich results. Accessibility that doubles as SEO.</p>
+        <span class="wow">On-page transcript · VideoObject schema</span>
+      </article>
+    </div>
+    <a class="seemore" href="https://deathpenalty.org/wp-content/plugins/(BL)%20Videos/assets/inside-bl-videos.html">See the full (BL) Videos breakdown →</a>
+  </div>
+</section>
+
+<!-- ============ IMAGES ============ -->
+<section id="images" class="band band--alt">
+  <div class="wrap">
+    <div class="head rise">
+      <div class="pmeta">
+        <span class="tag live">Live</span>
+        <span class="tag">v<b>1.0.7</b></span>
+        <span class="tag">Media Library + tools</span>
+      </div>
+      <h2 class="pname"><span class="paren">(</span>BL<span class="paren">)</span> Images</h2>
+      <p class="lede">Imagery you can prove you're allowed to use. It finds legally-safe images, makes them fast, writes their alt text, and keeps a tamper-evident record of exactly where each one came from.</p>
+    </div>
+    <div class="plates">
+      <article class="plate g-teal rise">
+        <div class="kicker">Sourcing</div>
+        <h3>Legally safe by design</h3>
+        <p>Searches Openverse and Wikimedia Commons for public-domain, CC0 and CC BY images <em>only</em> — or takes your own upload — so nothing with murky rights ever slips onto the site.</p>
+        <span class="wow">PD / CC0 / CC BY · Openverse + Wikimedia</span>
+      </article>
+      <article class="plate g-forest rise">
+        <div class="kicker">Provenance</div>
+        <h3>A record that can't be quietly edited</h3>
+        <p>Every image carries its license, a source snapshot, SHA-256 hashes, a Wayback Machine capture, and a hash-chained ledger — tamper-evident provenance, timestamped for real accountability.</p>
+        <span class="wow">Hash-chained ledger · OpenTimestamps · Wayback</span>
+      </article>
+      <article class="plate g-gold rise">
+        <div class="kicker">Accessibility</div>
+        <h3>Alt text, written for you</h3>
+        <p>Claude drafts professional Alt, Title, Caption and credit metadata for each image through the same edge worker the rest of the stack uses — and every file is converted to optimized WebP.</p>
+        <span class="wow">Claude alt text · auto-WebP</span>
+      </article>
+      <article class="plate g-slate rise">
+        <div class="kicker">Stewardship</div>
+        <h3>The whole lifecycle</h3>
+        <p>Signed model &amp; contributor releases, replace-in-place, where-used, duplicate consolidation, focal points, a public credits page, and a one-screen license audit of the whole library.</p>
+        <span class="wow">E-sign releases · where-used · audit</span>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============ AWARDS DINNERS ============ -->
+<section id="awards" class="band">
+  <div class="wrap">
+    <div class="head rise">
+      <div class="pmeta">
+        <span class="tag live">Live</span>
+        <span class="tag">v<b>1.0.17</b></span>
+        <span class="tag">shortcode <b>[dpf_gala_data]</b></span>
+      </div>
+      <h2 class="pname"><span class="paren">(</span>BL<span class="paren">)</span> Awards Dinners</h2>
+      <p class="lede">One record per year, two pages for free. All of an Awards Dinner's content lives in a single structured record that drives both the pre-event / live page and the highlights page — with no page-builder plugin tax underneath it.</p>
+    </div>
+    <div class="plates">
+      <article class="plate g-gold rise">
+        <div class="kicker">Model</div>
+        <h3>One gala, everything in it</h3>
+        <p>A dependency-free record per year holds the Schedule, Identity, Honorees, Videos, Photo Gallery and Tribute Book — native WordPress metaboxes, no ACF or other add-on required.</p>
+        <span class="wow">Custom post type · JSON meta blobs</span>
+      </article>
+      <article class="plate g-oxblood rise">
+        <div class="kicker">Bridge</div>
+        <h3>Two pages, one source of truth</h3>
+        <p>The [dpf_gala_data] shortcode publishes the record to the page and a REST feed, so the Pre/Live and Highlights widgets read the same data instead of each keeping their own copy.</p>
+        <span class="wow">Shortcode + REST · no duplication</span>
+      </article>
+      <article class="plate g-maroon rise">
+        <div class="kicker">Lifecycle</div>
+        <h3>It knows what phase it's in</h3>
+        <p>Date logic shifts a dinner through pre-event, live, and highlights on its own, with a manual override for when you need to force a phase ahead of the calendar.</p>
+        <span class="wow">Auto phase · manual override</span>
+      </article>
+      <article class="plate g-slate rise">
+        <div class="kicker">Independence</div>
+        <h3>No plugin tax</h3>
+        <p>Built on the same self-updating rails as the rest of the suite, with nothing proprietary underneath — the Awards program's data belongs to DPF, in a form the whole site can read.</p>
+        <span class="wow">Self-owned · self-updating</span>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CODE SNIPPETS ============ -->
+<section id="snippets" class="band band--alt">
+  <div class="wrap">
+    <div class="head rise">
+      <div class="pmeta">
+        <span class="tag live">Live</span>
+        <span class="tag">v<b>1.0.6</b></span>
+        <span class="tag">shortcode <b>[bl_snippet]</b></span>
+      </div>
+      <h2 class="pname"><span class="paren">(</span>BL<span class="paren">)</span> Code Snippets</h2>
+      <p class="lede">One safe home for custom code. PHP, HTML, CSS and JavaScript snippets in a syntax-highlighting editor — with a safety net that won't let a single typo take the site down.</p>
+    </div>
+    <div class="plates">
+      <article class="plate g-slate rise">
+        <div class="kicker">Organization</div>
+        <h3>All the custom code, in one place</h3>
+        <p>PHP, HTML, CSS and JavaScript snippets, each with its own activation, scope and placement — plus a [bl_snippet] shortcode and JSON import / export for moving code between sites.</p>
+        <span class="wow">Per-snippet scope &amp; placement</span>
+      </article>
+      <article class="plate g-maroon rise">
+        <div class="kicker">Safety</div>
+        <h3>A typo can't white-screen the site</h3>
+        <p>A safe-mode watches PHP execution and auto-disables a broken snippet instead of taking the whole site down with it — the single most dangerous thing about custom code, defused.</p>
+        <span class="wow">Safe-mode · auto-disable on error</span>
+      </article>
+      <article class="plate g-gold rise">
+        <div class="kicker">Independence</div>
+        <h3>A paid plugin, retired</h3>
+        <p>A self-owned replacement for Code Snippets PRO: the same job, no subscription, no vendor lock-in — the organization owns the tool that runs its own code.</p>
+        <span class="wow">Replaces a paid subscription</span>
+      </article>
+      <article class="plate g-navy rise">
+        <div class="kicker">Editor</div>
+        <h3>Written to be read</h3>
+        <p>A CodeMirror editor with real syntax highlighting keeps the code that runs the site legible and maintainable, so a change months from now is still easy to make with confidence.</p>
+        <span class="wow">CodeMirror · syntax highlighting</span>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============ UNDER THE HOOD ============ -->
+<section class="band">
+  <div class="wrap">
+    <div class="head rise">
+      <span class="eyebrow">Under the hood</span>
+      <h2>The same modern techniques, quietly applied.</h2>
+      <p class="lede" style="margin-top:14px">None of this is visible to a visitor — which is the point. Across all five plugins, the hard parts were solved once so the easy parts stay easy.</p>
+    </div>
+    <div class="chips rise">
+      <span class="chip-tech"><b>TUS</b> resumable direct uploads</span>
+      <span class="chip-tech"><b>Cloudflare Workers</b> + Claude at the edge</span>
+      <span class="chip-tech"><b>WP-Cron</b> background automation</span>
+      <span class="chip-tech"><b>JSON-LD</b> structured data</span>
+      <span class="chip-tech"><b>Hash-chained</b> provenance ledger</span>
+      <span class="chip-tech"><b>OpenTimestamps</b> + Wayback capture</span>
+      <span class="chip-tech"><b>Container queries</b> for self-scaling type</span>
+      <span class="chip-tech"><b>Self-hosted</b> update checker (PUC)</span>
+      <span class="chip-tech"><b>Signed</b>, short-lived tokens</span>
+      <span class="chip-tech"><b>Safe-mode</b> PHP eval</span>
+      <span class="chip-tech"><b>Theme-hardened</b> !important CSS</span>
+      <span class="chip-tech"><b>Auto cache-purge</b> on save</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ THE STACK ============ -->
+<section class="band band--alt">
+  <div class="wrap">
+    <div class="head rise">
+      <span class="eyebrow">The stack it stands on</span>
+      <h2>A few accounts, doing the heavy lifting.</h2>
+    </div>
+    <div class="stack rise">
+      <div class="svc"><div class="dot d-bunny">B</div><div><h4>Bunny Stream</h4><p>Global video hosting, encoding, adaptive delivery and AI captions. The video itself never burdens the web server.</p></div></div>
+      <div class="svc"><div class="dot d-cf">C</div><div><h4>Cloudflare Workers + Anthropic Claude</h4><p>The AI brain — transcription, slide copy, image alt text and metadata, authored on demand at the edge for pennies.</p></div></div>
+      <div class="svc"><div class="dot d-gh">G</div><div><h4>GitHub Releases</h4><p>The update pipeline for every plugin. Each version is a public release the live site installs on its own — native “Update now.”</p></div></div>
+      <div class="svc"><div class="dot d-wp">W</div><div><h4>WordPress</h4><p>The home base — custom post types, taxonomies, REST endpoints and a metadata model the rest of the site reads from.</p></div></div>
+      <div class="svc"><div class="dot d-ov">O</div><div><h4>Openverse + Wikimedia Commons</h4><p>The legally-safe sources behind (BL) Images and the Slide Editor's Wikimedia search — public-domain and openly-licensed only.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SCOPE ============ -->
+<section class="band" style="padding-top:28px">
+  <div class="wrap">
+    <div class="scope rise">
+      <span class="eyebrow">Scope of work</span>
+      <p class="pull">Not five weekend plugins — a small, sustained software platform, built and refined across 2026.</p>
+      <div class="rule"></div>
+      <p>Each plugin is an estimated <b style="color:#f3e7d2">one to several weeks of focused, senior full-stack work</b>: cooperating PHP modules each with one job, a shared Cloudflare Worker, custom admin experiences, and an automated GitHub release pipeline — shipped as many small, deliberate versions, every one reviewed against the real site.</p>
+      <p>Together they span back-end (Bunny &amp; Cloudflare integration, WP-Cron automation, REST wiring, tamper-evident provenance), front-end (bespoke display engines, cinematic thumbnails, an accessible bio modal, a by-eye carousel editor), design (a coherent visual language tuned at real sizes), and operations (self-updating, cost analysis, audit trails, auto cache-purge). And they keep growing — this is a living system, not a finished artifact.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span class="mono">The (BL) Plugin Suite · <b>for Death Penalty Focus</b></span>
+    <span class="mono">Designed &amp; built with Claude · deathpenalty.org</span>
+  </div>
+</footer>
+
+<script>
+  (function(){
+    var els = [].slice.call(document.querySelectorAll('.rise'));
+    function showAll(){ els.forEach(function(e){ e.classList.add('in'); }); }
+    if(!('IntersectionObserver' in window) || matchMedia('(prefers-reduced-motion: reduce)').matches){
+      showAll(); return;
+    }
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); }
+      });
+    },{rootMargin:'0px 0px -8% 0px',threshold:.06});
+    els.forEach(function(e,i){ e.style.transitionDelay = Math.min(i%4,3)*60 + 'ms'; io.observe(e); });
+    setTimeout(showAll, 1400);
+  })();
+</script>
+</body>
+</html>
