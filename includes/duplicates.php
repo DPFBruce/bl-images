@@ -353,6 +353,65 @@ function bl_img_redirect_target( $path ) {
 	return $to;
 }
 
+/*
+ * Apache on DPF's host answers requests for missing upload files itself (a
+ * static 404 — WordPress never runs). This marked block in uploads/.htaccess
+ * hands ONLY missing image files to WordPress, which then 301s known old
+ * duplicate URLs to their keeper and returns a fast 404 for everything else.
+ * Existing files are untouched (RewriteCond !-f). Removed on deactivation.
+ */
+function bl_img_uploads_htaccess( $enable = true ) {
+	require_once ABSPATH . 'wp-admin/includes/misc.php';
+	$up   = wp_upload_dir( null, false );
+	$file = trailingslashit( $up['basedir'] ) . '.htaccess';
+	if ( ( file_exists( $file ) && ! is_writable( $file ) ) || ( ! file_exists( $file ) && ! is_writable( $up['basedir'] ) ) ) {
+		return false;
+	}
+	$lines = array();
+	if ( $enable ) {
+		$index = wp_parse_url( home_url( '/' ), PHP_URL_PATH );
+		$lines = array(
+			'<IfModule mod_rewrite.c>',
+			'RewriteEngine On',
+			'RewriteCond %{REQUEST_FILENAME} !-f',
+			'RewriteRule ^(.+\.(?:jpe?g|png|gif|webp|avif))$ ' . ( $index ? $index : '/' ) . 'index.php?bl_img_missing=$1 [L,QSA,NC]',
+			'</IfModule>',
+		);
+	}
+	return insert_with_markers( $file, '(BL) Images redirects', $lines );
+}
+
+add_action( 'plugins_loaded', function () {
+	if ( '1' !== get_option( 'bl_img_htaccess_v' ) && is_admin() ) {
+		if ( bl_img_uploads_htaccess( true ) ) {
+			update_option( 'bl_img_htaccess_v', '1', false );
+		}
+	}
+}, 20 );
+register_deactivation_hook( BL_IMG_FILE, function () {
+	bl_img_uploads_htaccess( false );
+	delete_option( 'bl_img_htaccess_v' );
+} );
+
+/* Fast path for missing images routed here by the .htaccess block. */
+add_action( 'init', function () {
+	if ( empty( $_GET['bl_img_missing'] ) ) {
+		return;
+	}
+	$rel = ltrim( (string) wp_unslash( $_GET['bl_img_missing'] ), '/' );
+	$up  = wp_upload_dir( null, false );
+	$to  = bl_img_redirect_target( bl_img_redirect_key( trailingslashit( $up['baseurl'] ) . $rel ) );
+	if ( $to ) {
+		wp_redirect( $to, 301, '(BL) Images' );
+		exit;
+	}
+	status_header( 404 );
+	nocache_headers();
+	header( 'Content-Type: text/plain; charset=utf-8' );
+	echo 'Not found';
+	exit;
+}, 0 );
+
 add_action( 'template_redirect', function () {
 	if ( ! is_404() || empty( $_SERVER['REQUEST_URI'] ) ) {
 		return;
