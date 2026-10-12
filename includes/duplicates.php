@@ -306,6 +306,68 @@ function bl_img_consolidate_group( $keeper, $dups ) {
 	return $out;
 }
 
+/* ------------------------------------------------------------------ *
+ *  301 redirects for removed duplicates
+ * ------------------------------------------------------------------ *
+ * Every URL a removed duplicate had (full + each size) is stored with the
+ * keeper's matching URL. When a request for one of those files 404s, WordPress
+ * answers with a permanent redirect to the keeper instead.
+ */
+function bl_img_redirect_key( $url ) {
+	$path = wp_parse_url( $url, PHP_URL_PATH );
+	return $path ? substr( strtolower( rawurldecode( $path ) ), 0, 191 ) : '';
+}
+
+function bl_img_record_redirects( $dup, $keeper ) {
+	global $wpdb;
+	$map = bl_img_build_url_map( bl_img_attachment_urls( $dup ), bl_img_attachment_urls( $keeper ), wp_get_attachment_metadata( $keeper ) );
+	$n   = 0;
+	foreach ( $map as $from => $to ) {
+		if ( 0 !== strpos( $from, 'http' ) ) {
+			continue; // relative variants share the same path key
+		}
+		$key = bl_img_redirect_key( $from );
+		if ( ! $key ) {
+			continue;
+		}
+		$wpdb->replace( $wpdb->prefix . 'bl_img_redirects', array( 'from_path' => $key, 'to_url' => esc_url_raw( $to ), 'attachment_id' => (int) $keeper, 'created_utc' => bl_img_now_utc() ) );
+		$n++;
+	}
+	return $n;
+}
+
+/* If a keeper is itself later removed/merged, follow the chain (max 5 hops). */
+function bl_img_redirect_target( $path ) {
+	global $wpdb;
+	$t   = $wpdb->prefix . 'bl_img_redirects';
+	$to  = '';
+	$key = $path;
+	for ( $i = 0; $i < 5; $i++ ) {
+		$next = $wpdb->get_var( $wpdb->prepare( "SELECT to_url FROM $t WHERE from_path = %s", $key ) );
+		if ( ! $next ) {
+			break;
+		}
+		$to  = $next;
+		$key = bl_img_redirect_key( $next );
+	}
+	return $to;
+}
+
+add_action( 'template_redirect', function () {
+	if ( ! is_404() || empty( $_SERVER['REQUEST_URI'] ) ) {
+		return;
+	}
+	$uri = wp_unslash( $_SERVER['REQUEST_URI'] );
+	if ( false === stripos( $uri, '/uploads/' ) || ! preg_match( '/\.(jpe?g|png|gif|webp|avif|tiff?)(\?|$)/i', $uri ) ) {
+		return;
+	}
+	$to = bl_img_redirect_target( bl_img_redirect_key( $uri ) );
+	if ( $to ) {
+		wp_redirect( $to, 301, '(BL) Images' );
+		exit;
+	}
+}, 1 );
+
 /** Step 2: archive + delete duplicates that no longer have any references. */
 function bl_img_remove_duplicates( $dups ) {
 	$removed = array();
@@ -340,8 +402,18 @@ function bl_img_remove_duplicates( $dups ) {
 		if ( is_dir( $old_items ) ) {
 			rename( $old_items, bl_img_vault_dir( 'items/' . $keeper ) . '/merged-from-' . $d );
 		}
+		// Safety: never delete a file another library item also points to.
+		global $wpdb;
+		$rel_file = get_post_meta( $d, '_wp_attached_file', true );
+		$sharer   = $rel_file ? (int) $wpdb->get_var( $wpdb->prepare( "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_wp_attached_file' AND meta_value = %s AND post_id <> %d LIMIT 1", $rel_file, $d ) ) : 0;
+		if ( $sharer ) {
+			$skipped[] = array( 'id' => $d, 'why' => 'Shares its file with #' . $sharer . ' — not deleted.' );
+			continue;
+		}
+		// Outside links (old emails, social posts, search engines) → 301 to the keeper.
+		$redirects = bl_img_record_redirects( $d, $keeper );
 		wp_delete_attachment( $d, true );
-		bl_img_ledger_append( 'remove_duplicate', array( 'removed' => $d, 'keeper' => $keeper, 'archived_files' => $files ), $keeper );
+		bl_img_ledger_append( 'remove_duplicate', array( 'removed' => $d, 'keeper' => $keeper, 'archived_files' => $files, 'redirects' => $redirects ), $keeper );
 		$removed[] = $d;
 	}
 	bl_img_purge_page_cache();

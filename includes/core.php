@@ -155,6 +155,15 @@ function bl_img_install_tables() {
 		KEY obj (object_type,object_id)
 	) $c;" );
 
+	// Old URLs of removed duplicates → the keeper's URL (served as 301 redirects).
+	dbDelta( "CREATE TABLE {$wpdb->prefix}bl_img_redirects (
+		from_path varchar(191) NOT NULL,
+		to_url text NOT NULL,
+		attachment_id bigint(20) unsigned NOT NULL DEFAULT 0,
+		created_utc varchar(32) NOT NULL DEFAULT '',
+		PRIMARY KEY  (from_path)
+	) $c;" );
+
 	update_option( 'bl_img_db_version', BL_IMG_DB_VERSION );
 }
 
