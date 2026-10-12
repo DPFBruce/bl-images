@@ -70,7 +70,8 @@ function bl_img_js_config() {
 function bl_img_enqueue_app() {
 	wp_enqueue_style( 'bl-img-admin', BL_IMG_URL . 'assets/admin.css', array(), BL_IMG_VERSION );
 	wp_enqueue_script( 'bl-img-app', BL_IMG_URL . 'assets/app.js', array(), BL_IMG_VERSION, true );
-	wp_localize_script( 'bl-img-app', 'BLIMG', bl_img_js_config() );
+	// Inline JSON (not wp_localize_script, which turns every value into a string — 0 became "0", which JS treats as true).
+	wp_add_inline_script( 'bl-img-app', 'window.BLIMG = ' . wp_json_encode( bl_img_js_config() ) . ';', 'before' );
 }
 
 add_action( 'admin_enqueue_scripts', function ( $hook ) {

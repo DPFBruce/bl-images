@@ -343,7 +343,7 @@
       renderItem(drawer, id, function () { drawer.hidden = true; history.replaceState(null, '', location.pathname + '?page=bl-images-library'); load(); });
     }
     load();
-    if (C.itemParam) openItem(C.itemParam);
+    if (+C.itemParam > 0) openItem(+C.itemParam);
   }
 
   function renderItem(box, id, onClose) {
