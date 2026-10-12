@@ -38,7 +38,8 @@ function bl_img_render_app() {
 			echo '<a class="' . ( $slug === $page ? 'is-on' : '' ) . '" href="' . esc_url( admin_url( 'admin.php?page=' . $slug ) ) . '">' . esc_html( $v[1] ) . '</a>';
 		}
 	}
-	echo '</nav><button type="button" class="button bl-img-help-btn">Help &amp; Guide</button></div>';
+	echo '</nav><button type="button" class="button bl-img-help-btn">Help &amp; Guide</button>'
+		. '<a class="button" href="' . esc_url( BL_IMG_URL . 'assets/inside-bl-images.html' ) . '" target="_blank" rel="noopener" title="Open the shareable, full-color overview of this plugin">&#10022; Showcase &#8599;</a></div>';
 	echo '<div id="bl-img-app" data-view="' . esc_attr( $view ) . '"><p class="bl-img-loading">Loading…</p></div>';
 	echo '<div id="bl-img-help" class="bl-img-modal" hidden><div class="bl-img-modal__in bl-img-modal__in--doc"><button type="button" class="bl-img-modal__x" aria-label="Close">&times;</button><iframe src="' . esc_url( add_query_arg( 'v', BL_IMG_VERSION, BL_IMG_URL . 'assets/manual.html' ) ) . '" title="Guide"></iframe></div></div>';
 	echo '</div>';
