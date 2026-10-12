@@ -17,9 +17,47 @@ function bl_img_can_import() {
 function bl_img_can_admin() {
 	return current_user_can( BL_IMG_CAP_ADMIN );
 }
+/**
+ * Item routes: anyone who can import may open an image; editing needs edit_post
+ * (or admin). A missing image passes the gate so the callback can answer with a
+ * clear "no longer exists" (WordPress's map_meta_cap would otherwise turn a
+ * deleted ID into a confusing "Sorry, you are not allowed to do that.").
+ */
 function bl_img_can_edit_item( WP_REST_Request $r ) {
-	return current_user_can( 'edit_post', (int) $r['id'] ) && bl_img_is_image_attachment( (int) $r['id'] );
+	$id = (int) $r['id'];
+	if ( ! current_user_can( BL_IMG_CAP_IMPORT ) ) {
+		return false;
+	}
+	if ( ! bl_img_is_image_attachment( $id ) ) {
+		return true; // handled by bl_img_item_missing()
+	}
+	return current_user_can( 'edit_post', $id ) || current_user_can( BL_IMG_CAP_ADMIN );
 }
+
+/** WP_Error for an image ID that no longer exists (or never was an image). */
+function bl_img_item_missing( $id ) {
+	if ( bl_img_is_image_attachment( $id ) ) {
+		return null;
+	}
+	$rec = bl_img_vault_dir() . '/consolidated/' . (int) $id . '/record.json';
+	if ( file_exists( $rec ) ) {
+		$d = json_decode( file_get_contents( $rec ), true );
+		if ( ! empty( $d['keeper'] ) ) {
+			return new WP_Error( 'bl_img_merged', 'Image #' . (int) $id . ' was a duplicate and was consolidated into image #' . (int) $d['keeper'] . '.', array( 'status' => 404, 'keeper' => (int) $d['keeper'] ) );
+		}
+	}
+	return new WP_Error( 'bl_img_missing', 'Image #' . (int) $id . ' no longer exists in the Media Library.', array( 'status' => 404 ) );
+}
+
+add_filter( 'rest_pre_dispatch', function ( $result, $server, $request ) {
+	if ( preg_match( '#^/bl-images/v1/item/(\d+)#', $request->get_route(), $m ) && current_user_can( BL_IMG_CAP_IMPORT ) ) {
+		$err = bl_img_item_missing( (int) $m[1] );
+		if ( $err ) {
+			return $err;
+		}
+	}
+	return $result;
+}, 10, 3 );
 
 add_action( 'rest_api_init', function () {
 	$ns = 'bl-images/v1';

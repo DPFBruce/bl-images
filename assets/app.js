@@ -30,7 +30,7 @@
         if (!r.ok && d && d.code === 'rest_cookie_invalid_nonce' && !retried) {
           return renewNonce().then(function () { return api(path, opt, true); });
         }
-        if (!r.ok) { throw new Error(d && d.message ? d.message : 'Request failed (' + r.status + ')'); }
+        if (!r.ok) { var er = new Error(d && d.message ? d.message : 'Request failed (' + r.status + ')'); er.data = d && d.data ? d.data : {}; throw er; }
         return d;
       });
     });
@@ -465,7 +465,16 @@
         section('Where it\'s used', useBox),
         section('Replace this image', repBox, false),
         section('History (ledger)', hist, false)));
-    }).catch(function (e) { clear(box).appendChild(h('div', { class: 'bl-img-err', text: e.message })); });
+    }).catch(function (e) {
+      // Never strand the user in the drawer: always offer Close (and the keeper, if it was merged).
+      var keeper = e.data && e.data.keeper;
+      clear(box).appendChild(h('div', { class: 'bl-img-item' },
+        h('button', { type: 'button', class: 'bl-img-drawer__x', 'aria-label': 'Close', onclick: onClose }, '×'),
+        h('div', { class: 'bl-img-err', text: e.message }),
+        h('div', { class: 'bl-img-row' },
+          keeper ? btn('Open the kept image #' + keeper, function () { renderItem(box, keeper, onClose); history.replaceState(null, '', location.pathname + '?page=bl-images-library&item=' + keeper); }, 'button-primary') : null,
+          btn('Back to Library', onClose))));
+    });
   }
   function kv(k, v) { return h('div', { class: 'bl-img-kv' }, h('b', { text: k }), typeof v === 'string' ? h('span', { text: v }) : v); }
 
