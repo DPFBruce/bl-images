@@ -785,9 +785,9 @@
     var scanOut = h('div');
     var scanBtn = btn('Scan whole site for broken images', function () {
       var S = { urls: [], i: 0, imgs: {}, css: {}, res: {} };
-      var re = /(?:https?:\/\/[^\/"'\s]+)?(\/wp-content\/uploads\/[^"'\s)<>?#,\\]+?\.(?:jpe?g|png|gif|webp|avif|svg))/gi;
+      var re = /(?:https?:\/\/[^\/"'\s]+)?(\/wp-content\/uploads\/[^"'\s)<>?#,\\]+?\.(?:jpe?g|png|gif|webp|avif|svg))(?=["'\s)<>?#,\\]|$)/gi;
       var cssre = /\/wp-content\/uploads\/elementor\/css\/[^"'\s?]+\.css/gi;
-      var cssUrl = /url\(\s*['"]?(?:https?:\/\/[^\/'")]+)?(\/wp-content\/uploads\/[^'")?#]+?\.(?:jpe?g|png|gif|webp|avif|svg))/gi;
+      var cssUrl = /url\(\s*['"]?(?:https?:\/\/[^\/'")]+)?(\/wp-content\/uploads\/[^'")?#]+?\.(?:jpe?g|png|gif|webp|avif|svg))(?=['")?#\s])/gi;
       function add(p, page) { p = decodeURI(p); (S.imgs[p] = S.imgs[p] || {})[page] = 1; }
       function txt(u) { return fetch(u, { credentials: 'omit' }).then(function (r) { return r.ok ? r.text() : ''; }).catch(function () { return ''; }); }
       busy(scanBtn, true, 'Reading sitemap…'); clear(scanOut);

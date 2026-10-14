@@ -61,7 +61,9 @@ function bl_img_extract_refs( $text ) {
 	}
 	$map = bl_img_stem_map();
 	if ( false !== strpos( $text, 'uploads' ) ) {
-		if ( preg_match_all( '#uploads(?:\\\\?/)((?:[^"\'\s<>()?\#]+?))\.(?:jpe?g|png|gif|webp|avif|svg|tiff?)#i', $text, $m ) ) {
+		// The extension must END the URL (quote, space, bracket, comma, backslash…):
+		// "photo.jpg" must not be read out of "photo.jpg-300x200.webp" or "photo.jpg.webp".
+		if ( preg_match_all( '#uploads(?:\\\\?/)((?:[^"\'\s<>()?\#]+?))\.(?:jpe?g|png|gif|webp|avif|svg|tiff?)(?=["\'\s<>()?\#,\\\\]|$)#i', $text, $m ) ) {
 			foreach ( $m[1] as $rel ) {
 				$stem = bl_img_url_to_stem( $rel . '.x' );
 				if ( isset( $map[ $stem ] ) ) {
@@ -357,23 +359,45 @@ function bl_img_build_url_map( $old_urls, $new_urls, $new_meta = null ) {
 }
 
 /** Apply URL + ID maps to a scalar string (handles JSON-escaped slashes). */
+/**
+ * Replace WHOLE URLs only, in one pass. A match must not be followed by another
+ * file-name character, so "photo.jpg" never matches inside "photo.jpg.webp" or
+ * "photo.jpg-300x200.webp", and a replacement is never re-replaced (A→B, B→C).
+ * Handles the JSON-escaped form ("\/") Elementor and Yoast store.
+ */
+function bl_img_replace_whole_urls( $s, $url_map ) {
+	if ( ! is_string( $s ) || '' === $s || ! $url_map ) {
+		return $s;
+	}
+	$lookup = array();
+	foreach ( $url_map as $o => $n ) {
+		if ( '' === (string) $o || false === strpos( $s, basename( str_replace( '\\/', '/', $o ) ) ) ) {
+			continue; // cheap pre-filter: file name not present at all
+		}
+		$lookup[ $o ] = $n;
+		$eo           = str_replace( '/', '\\/', $o );
+		if ( $eo !== $o ) {
+			$lookup[ $eo ] = str_replace( '/', '\\/', $n );
+		}
+	}
+	if ( ! $lookup ) {
+		return $s;
+	}
+	$keys = array_keys( $lookup );
+	usort( $keys, function ( $a, $b ) { return strlen( $b ) - strlen( $a ); } );
+	foreach ( array_chunk( $keys, 150 ) as $chunk ) {
+		$re = '#(' . implode( '|', array_map( function ( $k ) { return preg_quote( $k, '#' ); }, $chunk ) ) . ')(?![A-Za-z0-9_.\-])#';
+		$s  = preg_replace_callback( $re, function ( $m ) use ( $lookup ) { return isset( $lookup[ $m[1] ] ) ? $lookup[ $m[1] ] : $m[1]; }, $s );
+	}
+	return $s;
+}
+
 function bl_img_rewrite_string( $s, $url_map, $id_map ) {
 	if ( ! is_string( $s ) || '' === $s ) {
 		return $s;
 	}
 	if ( $url_map ) {
-		$from = array();
-		$to   = array();
-		foreach ( $url_map as $o => $n ) {
-			$from[] = $o;
-			$to[]   = $n;
-			$eo     = str_replace( '/', '\\/', $o );
-			if ( $eo !== $o ) {
-				$from[] = $eo;
-				$to[]   = str_replace( '/', '\\/', $n );
-			}
-		}
-		$s = str_replace( $from, $to, $s );
+		$s = bl_img_replace_whole_urls( $s, $url_map );
 	}
 	foreach ( $id_map as $old => $new ) {
 		$old = (int) $old;

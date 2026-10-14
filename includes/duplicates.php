@@ -903,12 +903,24 @@ function bl_img_replace_url_everywhere( $old_path, $new_url, $reason ) {
 	// Yoast SEO keeps its own copy of social-share images.
 	$yt = $wpdb->prefix . 'yoast_indexable';
 	if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $yt ) ) === $yt ) {
-		foreach ( array( 'open_graph_image', 'twitter_image', 'open_graph_image_meta' ) as $col ) {
-			foreach ( array( $old_abs, $alt ) as $from ) {
-				if ( $from ) {
-					$n += (int) $wpdb->query( $wpdb->prepare( "UPDATE $yt SET $col = REPLACE($col, %s, %s) WHERE $col LIKE %s", $from, $new_url, '%' . $wpdb->esc_like( $from ) . '%' ) );
-					$n += (int) $wpdb->query( $wpdb->prepare( "UPDATE $yt SET $col = REPLACE($col, %s, %s) WHERE $col LIKE %s", str_replace( '/', '\\/', $from ), str_replace( '/', '\\/', $new_url ), '%' . $wpdb->esc_like( str_replace( '/', '\\/', $from ) ) . '%' ) );
+		// Whole-URL replacement in PHP (never a raw SQL REPLACE, which would also
+		// hit longer names like "photo.jpg.webp" that merely START with the old URL).
+		$cols = array( 'open_graph_image', 'twitter_image', 'open_graph_image_meta' );
+		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT id, open_graph_image, twitter_image, open_graph_image_meta FROM $yt WHERE open_graph_image LIKE %s OR twitter_image LIKE %s OR open_graph_image_meta LIKE %s", $needle, $needle, $needle ), ARRAY_A );
+		foreach ( $rows as $row ) {
+			$upd = array();
+			foreach ( $cols as $col ) {
+				if ( null === $row[ $col ] ) {
+					continue;
 				}
+				$nv = bl_img_replace_whole_urls( (string) $row[ $col ], $map );
+				if ( $nv !== (string) $row[ $col ] ) {
+					$upd[ $col ] = $nv;
+				}
+			}
+			if ( $upd ) {
+				$wpdb->update( $yt, $upd, array( 'id' => $row['id'] ) );
+				$n++;
 			}
 		}
 	}
