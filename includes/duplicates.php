@@ -779,7 +779,7 @@ function bl_img_best_size_url( $att, $want_w ) {
 }
 
 /** Resolve one broken uploads path to a replacement URL (or ''). */
-function bl_img_resolve_broken( $path ) {
+function bl_img_resolve_broken( $path, $literal = false ) {
 	global $wpdb;
 	$path = '/' . ltrim( $path, '/' );
 	// a) Redirect table (removed duplicate).
@@ -793,6 +793,10 @@ function bl_img_resolve_broken( $path ) {
 	}
 	$stem = $m[1];
 	$want = (int) $m[2];
+	if ( $literal ) { // the "-300x213" is part of the real file name, not a size
+		$stem = pathinfo( $file, PATHINFO_FILENAME );
+		$want = 0;
+	}
 	// b) Live attachment with the same file stem (any folder; also stem-1, stem-2 migration copies).
 	$like = '%' . $wpdb->esc_like( '/' . $stem ) . '%';
 	$rows = $wpdb->get_results( $wpdb->prepare( "SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = '_wp_attached_file' AND ( meta_value LIKE %s OR meta_value LIKE %s )", $like, $wpdb->esc_like( $stem ) . '%' ), ARRAY_A );
@@ -822,6 +826,19 @@ function bl_img_resolve_broken( $path ) {
 			}
 		}
 	}
+	// b3) Converted by another WebP tool that kept the old extension in the name:
+	//     photo.jpg → photo.jpg.webp, or photo.jpg_2_2025.webp (re-uploads).
+	$named = strtolower( $stem . '.' . $m[4] );
+	$rows  = $wpdb->get_results( $wpdb->prepare( "SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = '_wp_attached_file' AND meta_value LIKE %s", '%' . $wpdb->esc_like( $stem . '.' . $m[4] ) . '%' ), ARRAY_A );
+	foreach ( $rows as $r ) {
+		$s = strtolower( preg_replace( '/-scaled$/', '', pathinfo( $r['meta_value'], PATHINFO_FILENAME ) ) );
+		if ( ( $s === $named || 0 === strpos( $s, $named . '_' ) ) && bl_img_is_image_attachment( (int) $r['post_id'] ) ) {
+			$u = bl_img_best_size_url( (int) $r['post_id'], $want );
+			if ( $u ) {
+				return array( 'url' => $u, 'how' => 'converted copy, library image #' . (int) $r['post_id'] );
+			}
+		}
+	}
 	// c) Archived duplicate with that name → its keeper.
 	foreach ( (array) glob( bl_img_vault_dir() . '/consolidated/*/record.json' ) as $f ) {
 		$d = json_decode( file_get_contents( $f ), true );
@@ -830,6 +847,9 @@ function bl_img_resolve_broken( $path ) {
 				return array( 'url' => bl_img_best_size_url( (int) $d['keeper'], $want ), 'how' => 'archived duplicate → keeper #' . (int) $d['keeper'] );
 			}
 		}
+	}
+	if ( ! $literal && ! empty( $m[2] ) ) {
+		return bl_img_resolve_broken( $path, true );
 	}
 	return null;
 }
