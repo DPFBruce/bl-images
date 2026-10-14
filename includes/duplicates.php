@@ -478,3 +478,221 @@ function bl_img_remove_duplicates( $dups ) {
 	bl_img_purge_page_cache();
 	return array( 'removed' => $removed, 'skipped' => $skipped );
 }
+
+/* ================================================================== *
+ *  Repair: references that still point at a REMOVED duplicate
+ * ================================================================== *
+ * Builds removed-ID → keeper-ID from the ledger (remove_duplicate events)
+ * and the vault's consolidated/<id>/record.json files, follows chains to an
+ * image that still exists, then repoints featured images, ACF image/file/
+ * gallery fields, term thumbnails, site logo/icon, and (in batches) every
+ * wp-image-N class, block id and old file URL in content, Elementor and options.
+ */
+function bl_img_removed_map() {
+	global $wpdb;
+	$map  = array();
+	$rows = $wpdb->get_col( "SELECT data FROM " . bl_img_ledger_table() . " WHERE event = 'remove_duplicate'" );
+	foreach ( $rows as $json ) {
+		$d = json_decode( $json, true );
+		if ( ! empty( $d['removed'] ) && ! empty( $d['keeper'] ) ) {
+			$map[ (int) $d['removed'] ] = (int) $d['keeper'];
+		}
+	}
+	foreach ( (array) glob( bl_img_vault_dir() . '/consolidated/*/record.json' ) as $f ) {
+		$id = (int) basename( dirname( $f ) );
+		if ( $id && ! isset( $map[ $id ] ) ) {
+			$d = json_decode( file_get_contents( $f ), true );
+			if ( ! empty( $d['keeper'] ) ) {
+				$map[ $id ] = (int) $d['keeper'];
+			}
+		}
+	}
+	// Follow chains (A→B where B was itself removed → C) and keep only live targets.
+	$out = array();
+	foreach ( $map as $from => $to ) {
+		if ( bl_img_is_image_attachment( $from ) ) {
+			continue; // not actually gone
+		}
+		$hops = 0;
+		while ( isset( $map[ $to ] ) && ! bl_img_is_image_attachment( $to ) && $hops++ < 6 ) {
+			$to = $map[ $to ];
+		}
+		if ( bl_img_is_image_attachment( $to ) ) {
+			$out[ $from ] = $to;
+		}
+	}
+	return $out;
+}
+
+/** URL map (old duplicate file URLs → keeper URLs) from the redirects table. */
+function bl_img_removed_url_map() {
+	global $wpdb;
+	$host = untrailingslashit( home_url() );
+	$map  = array();
+	foreach ( $wpdb->get_results( "SELECT from_path, to_url FROM {$wpdb->prefix}bl_img_redirects", ARRAY_A ) as $r ) {
+		$map[ $host . $r['from_path'] ] = $r['to_url'];
+	}
+	uksort( $map, function ( $a, $b ) { return strlen( $b ) - strlen( $a ); } );
+	return $map;
+}
+
+/** Step A (fast, one call): ID-based references. */
+function bl_img_repair_ids() {
+	global $wpdb;
+	$map = bl_img_removed_map();
+	if ( ! $map ) {
+		return array( 'fixed' => 0, 'details' => array(), 'removed_known' => 0 );
+	}
+	$in      = implode( ',', array_map( 'intval', array_keys( $map ) ) );
+	$fixed   = 0;
+	$details = array();
+	$undo    = array();
+
+	// 1. Featured images + ACF single image/file fields (bare numeric meta).
+	$rows = $wpdb->get_results( "SELECT meta_id, post_id, meta_key, meta_value FROM {$wpdb->postmeta} WHERE meta_value IN ('" . str_replace( ',', "','", $in ) . "')", ARRAY_A );
+	foreach ( $rows as $r ) {
+		$is_thumb = '_thumbnail_id' === $r['meta_key'];
+		$is_acf   = false;
+		if ( ! $is_thumb && '_' !== substr( $r['meta_key'], 0, 1 ) ) {
+			$fk = get_post_meta( $r['post_id'], '_' . $r['meta_key'], true );
+			if ( is_string( $fk ) && 0 === strpos( $fk, 'field_' ) ) {
+				$type   = function_exists( 'acf_get_field' ) ? ( ( $f = acf_get_field( $fk ) ) ? $f['type'] : '' ) : 'image';
+				$is_acf = in_array( $type, array( 'image', 'file' ), true );
+			}
+		}
+		if ( ! $is_thumb && ! $is_acf ) {
+			continue;
+		}
+		$new = (string) $map[ (int) $r['meta_value'] ];
+		$undo[] = array( 'type' => 'meta', 'meta_id' => (int) $r['meta_id'], 'post_id' => (int) $r['post_id'], 'meta_value' => $r['meta_value'] );
+		$wpdb->update( $wpdb->postmeta, array( 'meta_value' => $new ), array( 'meta_id' => $r['meta_id'] ) );
+		wp_cache_delete( (int) $r['post_id'], 'post_meta' );
+		clean_post_cache( (int) $r['post_id'] );
+		$fixed++;
+		$details[] = get_the_title( $r['post_id'] ) . ' (' . get_post_type( $r['post_id'] ) . ' #' . $r['post_id'] . ', ' . ( $is_thumb ? 'featured image' : $r['meta_key'] ) . '): #' . $r['meta_value'] . ' → #' . $new;
+	}
+
+	// 2. ACF galleries (serialized ID arrays).
+	$gal = $wpdb->get_results( "SELECT meta_id, post_id, meta_key, meta_value FROM {$wpdb->postmeta} WHERE meta_value LIKE 'a:%' AND meta_key NOT LIKE '\\_%'", ARRAY_A );
+	foreach ( $gal as $r ) {
+		$arr = @unserialize( $r['meta_value'], array( 'allowed_classes' => false ) );
+		if ( ! is_array( $arr ) || ! $arr ) {
+			continue;
+		}
+		$changed = false;
+		foreach ( $arr as $k => $v ) {
+			if ( is_scalar( $v ) && ctype_digit( (string) $v ) && isset( $map[ (int) $v ] ) ) {
+				$arr[ $k ] = is_int( $v ) ? $map[ (int) $v ] : (string) $map[ (int) $v ];
+				$changed   = true;
+			}
+		}
+		if ( $changed ) {
+			$fk = get_post_meta( $r['post_id'], '_' . $r['meta_key'], true );
+			if ( ! ( is_string( $fk ) && 0 === strpos( $fk, 'field_' ) ) ) {
+				continue; // only ACF-managed lists; never guess at unrelated numeric arrays
+			}
+			$undo[] = array( 'type' => 'meta', 'meta_id' => (int) $r['meta_id'], 'post_id' => (int) $r['post_id'], 'meta_value' => $r['meta_value'] );
+			$wpdb->update( $wpdb->postmeta, array( 'meta_value' => serialize( $arr ) ), array( 'meta_id' => $r['meta_id'] ) );
+			wp_cache_delete( (int) $r['post_id'], 'post_meta' );
+			$fixed++;
+			$details[] = get_the_title( $r['post_id'] ) . ' (gallery ' . $r['meta_key'] . ')';
+		}
+	}
+
+	// 3. Term thumbnails, site icon/logo, theme logo.
+	foreach ( $wpdb->get_results( "SELECT meta_id, term_id, meta_key, meta_value FROM {$wpdb->termmeta} WHERE meta_key IN ('thumbnail_id','_thumbnail_id','image') AND meta_value IN ('" . str_replace( ',', "','", $in ) . "')", ARRAY_A ) as $r ) {
+		$undo[] = array( 'type' => 'term', 'term_id' => (int) $r['term_id'], 'key' => $r['meta_key'], 'value' => $r['meta_value'] );
+		update_term_meta( $r['term_id'], $r['meta_key'], (string) $map[ (int) $r['meta_value'] ] );
+		$fixed++;
+		$details[] = 'Term #' . $r['term_id'] . ' ' . $r['meta_key'];
+	}
+	foreach ( array( 'site_icon', 'site_logo' ) as $opt ) {
+		$v = (int) get_option( $opt );
+		if ( $v && isset( $map[ $v ] ) ) {
+			$undo[] = array( 'type' => 'option', 'name' => $opt, 'option_value' => (string) $v );
+			update_option( $opt, $map[ $v ] );
+			$fixed++;
+			$details[] = 'Site setting ' . $opt;
+		}
+	}
+	$tm = get_theme_mods();
+	if ( ! empty( $tm['custom_logo'] ) && isset( $map[ (int) $tm['custom_logo'] ] ) ) {
+		set_theme_mod( 'custom_logo', $map[ (int) $tm['custom_logo'] ] );
+		$fixed++;
+		$details[] = 'Theme logo';
+	}
+
+	$undo_id = '';
+	if ( $undo ) {
+		$undo_id = gmdate( 'Ymd-His' ) . '-repair';
+		bl_img_vault_put_json( 'undo', $undo_id . '.json', array( 'reason' => 'repair: repoint removed duplicates (IDs)', 'at' => bl_img_now_utc(), 'by' => bl_img_current_actor(), 'url_map' => array(), 'id_map' => $map, 'rows' => $undo ) );
+	}
+	if ( $fixed ) {
+		bl_img_ledger_append( 'repair_references', array( 'step' => 'ids', 'fixed' => $fixed, 'details' => $details, 'undo' => $undo_id ) );
+		bl_img_purge_page_cache();
+	}
+	return array( 'fixed' => $fixed, 'details' => $details, 'removed_known' => count( $map ), 'undo' => $undo_id );
+}
+
+/** Step B (batched): content, Elementor data and other meta — wp-image-N, block ids, old URLs. */
+function bl_img_repair_content_batch( $offset, $size = 120 ) {
+	global $wpdb;
+	bl_img_raise_limits();
+	$map  = bl_img_removed_map();
+	$urls = bl_img_removed_url_map();
+	$ids  = $wpdb->get_col( $wpdb->prepare( "SELECT ID FROM {$wpdb->posts} WHERE post_type NOT IN ('revision','attachment','customize_changeset','oembed_cache') AND post_status NOT IN ('auto-draft','trash') ORDER BY ID ASC LIMIT %d OFFSET %d", $size, $offset ) );
+	$total = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type NOT IN ('revision','attachment','customize_changeset','oembed_cache') AND post_status NOT IN ('auto-draft','trash')" );
+	$fixed = 0;
+	$undo  = array();
+	$touched = array();
+	if ( $map || $urls ) {
+		foreach ( $ids as $pid ) {
+			$p = get_post( $pid );
+			$nc = bl_img_rewrite_value( $p->post_content, $urls, $map );
+			if ( $nc !== $p->post_content ) {
+				$undo[] = array( 'type' => 'post', 'id' => $p->ID, 'post_content' => $p->post_content, 'post_excerpt' => $p->post_excerpt );
+				$wpdb->update( $wpdb->posts, array( 'post_content' => $nc ), array( 'ID' => $p->ID ) );
+				clean_post_cache( $p->ID );
+				$touched[ $p->ID ] = 1;
+				$fixed++;
+			}
+			$metas = $wpdb->get_results( $wpdb->prepare( "SELECT meta_id, meta_key, meta_value FROM {$wpdb->postmeta} WHERE post_id = %d AND ( meta_key = '_elementor_data' OR meta_value LIKE %s ) AND meta_key NOT IN ('_wp_attached_file','_wp_attachment_metadata','_elementor_css')", $pid, '%uploads%' ), ARRAY_A );
+			foreach ( $metas as $m ) {
+				$nv = bl_img_rewrite_value( $m['meta_value'], $urls, $map, $m['meta_key'] );
+				if ( $nv !== $m['meta_value'] ) {
+					$undo[] = array( 'type' => 'meta', 'meta_id' => (int) $m['meta_id'], 'post_id' => (int) $pid, 'meta_value' => $m['meta_value'] );
+					$wpdb->update( $wpdb->postmeta, array( 'meta_value' => $nv ), array( 'meta_id' => $m['meta_id'] ) );
+					wp_cache_delete( (int) $pid, 'post_meta' );
+					$touched[ $pid ] = 1;
+					$fixed++;
+				}
+			}
+		}
+		foreach ( array_keys( $touched ) as $pid ) {
+			delete_post_meta( $pid, '_elementor_css' );
+			bl_img_index_post( $pid );
+		}
+	}
+	$done = count( $ids ) < $size;
+	if ( $done && $urls ) {
+		// Options last (one pass).
+		foreach ( $wpdb->get_results( "SELECT option_name, option_value FROM {$wpdb->options} WHERE option_value LIKE '%uploads%' AND option_name NOT LIKE '\\_%transient%'", ARRAY_A ) as $o ) {
+			$nv = bl_img_rewrite_value( $o['option_value'], $urls, $map );
+			if ( $nv !== $o['option_value'] ) {
+				$undo[] = array( 'type' => 'option', 'name' => $o['option_name'], 'option_value' => $o['option_value'] );
+				$wpdb->update( $wpdb->options, array( 'option_value' => $nv ), array( 'option_name' => $o['option_name'] ) );
+				wp_cache_delete( $o['option_name'], 'options' );
+				$fixed++;
+			}
+		}
+		wp_cache_delete( 'alloptions', 'options' );
+	}
+	if ( $undo ) {
+		bl_img_vault_put_json( 'undo', gmdate( 'Ymd-His' ) . '-repair-' . (int) $offset . '.json', array( 'reason' => 'repair: repoint removed duplicates (content, from #' . (int) $offset . ')', 'at' => bl_img_now_utc(), 'by' => bl_img_current_actor(), 'url_map' => array(), 'id_map' => $map, 'rows' => $undo ) );
+		bl_img_ledger_append( 'repair_references', array( 'step' => 'content', 'offset' => (int) $offset, 'fixed' => $fixed ) );
+	}
+	if ( $done ) {
+		bl_img_purge_page_cache();
+	}
+	return array( 'next' => $offset + count( $ids ), 'total' => $total, 'done' => $done, 'fixed' => $fixed );
+}

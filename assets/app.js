@@ -689,6 +689,31 @@
       runner('1. Fingerprint images', 'tools/hash', function (d) { return ['Fingerprinted ' + d.hashed + ' · ' + d.remaining + ' left']; }, log),
       btn('2. Find duplicates', function (e) { var b = e.target; busy(b, true, 'Comparing…'); api('tools/duplicates').then(function (d) { busy(b, false); drawGroups(d.groups); }).catch(function (er) { busy(b, false); toast(er.message, true); }); })));
     dupBox.appendChild(dupRes);
+
+    // Repair: anything still pointing at a removed duplicate → its keeper.
+    var repOut = h('div', { class: 'bl-img-muted' });
+    var repBtn = btn('Repair links to removed duplicates', function () {
+      busy(repBtn, true, 'Repairing featured images & image fields…');
+      api('tools/repair-ids', { method: 'POST' }).then(function (a) {
+        clear(repOut);
+        repOut.appendChild(h('div', { text: a.fixed + ' featured image / image-field reference(s) repointed (' + a.removed_known + ' removed duplicates known).' }));
+        a.details.forEach(function (x) { repOut.appendChild(h('div', { class: 'bl-img-ok', text: '✓ ' + x })); });
+        busy(repBtn, true, 'Repairing content & Elementor…');
+        var total = 0;
+        (function pass(offset) {
+          api('tools/repair-content', { method: 'POST', body: { offset: offset } }).then(function (c) {
+            total += c.fixed;
+            busy(repBtn, true, 'Repairing content… ' + Math.min(c.next, c.total) + ' / ' + c.total);
+            if (!c.done) { pass(c.next); return; }
+            repOut.appendChild(h('div', { text: total + ' content / Elementor / setting reference(s) repointed. Done.' }));
+            busy(repBtn, false); toast('Repair complete.');
+          }).catch(function (e) { busy(repBtn, false); toast(e.message, true); });
+        })(0);
+      }).catch(function (e) { busy(repBtn, false); toast(e.message, true); });
+    }, 'button-primary');
+    dupBox.appendChild(h('div', { class: 'bl-img-note' }, h('strong', { text: 'Repair: ' }), 'points anything still aimed at a removed duplicate (featured images, image fields, content, Elementor, settings) to the image that was kept. Safe to run any time; every change can be undone.'));
+    dupBox.appendChild(h('div', { class: 'bl-img-row' }, repBtn));
+    dupBox.appendChild(repOut);
     function drawGroups(groups) {
       clear(dupRes);
       if (!groups.length) { dupRes.appendChild(h('p', { text: 'No duplicates found. 🎉' })); return; }

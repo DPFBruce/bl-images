@@ -531,6 +531,19 @@ function bl_img_undo_rewrite( $undo_id ) {
 		return new WP_Error( 'no_undo', 'Undo record not found.' );
 	}
 	$log = json_decode( file_get_contents( $f ), true );
+	// Never undo a consolidation whose duplicates were already deleted: it would
+	// point pages back at images that no longer exist (missing photos).
+	if ( ! empty( $log['id_map'] ) && 0 === strpos( (string) $log['reason'], 'consolidate' ) ) {
+		$gone = array();
+		foreach ( array_keys( (array) $log['id_map'] ) as $old ) {
+			if ( ! bl_img_is_image_attachment( (int) $old ) ) {
+				$gone[] = '#' . (int) $old;
+			}
+		}
+		if ( $gone ) {
+			return new WP_Error( 'undo_gone', 'Can\'t undo: the duplicate image(s) ' . implode( ', ', $gone ) . ' were already removed, so undoing would break the pages that use them.' );
+		}
+	}
 	$n   = 0;
 	foreach ( array_reverse( (array) $log['rows'] ) as $r ) {
 		if ( 'post' === $r['type'] ) {

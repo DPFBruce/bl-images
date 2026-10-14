@@ -310,6 +310,13 @@ add_action( 'rest_api_init', function () {
 		$p = $r->get_json_params();
 		return bl_img_consolidate( (int) $p['keeper'], (array) $p['dups'] );
 	}, 'bl_img_can_admin' );
+	$R( '/tools/repair-ids', 'POST', function () {
+		return bl_img_repair_ids();
+	}, 'bl_img_can_admin' );
+	$R( '/tools/repair-content', 'POST', function ( $r ) {
+		$p = $r->get_json_params();
+		return bl_img_repair_content_batch( (int) ( isset( $p['offset'] ) ? $p['offset'] : 0 ) );
+	}, 'bl_img_can_admin' );
 	$R( '/tools/consolidate-group', 'POST', function ( $r ) {
 		$p = $r->get_json_params();
 		return bl_img_consolidate_group( (int) $p['keeper'], (array) $p['dups'] );
