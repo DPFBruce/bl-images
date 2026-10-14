@@ -41,6 +41,9 @@ function bl_img_audit_row( $id ) {
 	if ( ! $g( '_wp_attachment_image_alt' ) ) {
 		$warn[] = 'No alt text';
 	}
+	if ( function_exists( 'bl_img_parent_is_public' ) && ! bl_img_parent_is_public( $id ) ) {
+		$issues[] = 'Hidden from the public: attached to a trashed/private page (run Tools → Repair)';
+	}
 	if ( $p && 'image/webp' !== $p->post_mime_type && 'image/svg+xml' !== $p->post_mime_type ) {
 		$warn[] = 'Not WebP';
 	}

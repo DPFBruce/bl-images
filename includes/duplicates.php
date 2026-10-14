@@ -197,13 +197,47 @@ function bl_img_dup_member( $id ) {
 		'date'       => $p ? $p->post_date : '',
 		'used'       => bl_img_usage_count( $id ),
 		'provenance' => (bool) get_post_meta( $id, '_bl_img_ledger_id', true ),
+		'public'     => bl_img_parent_is_public( $id ),
 		'alt'        => (string) get_post_meta( $id, '_wp_attachment_image_alt', true ),
 		'edit'       => get_edit_post_link( $id, 'raw' ),
 	);
 }
 
-/** Keeper preference: has provenance → most used → most pixels → WebP → oldest. */
+/**
+ * WordPress hides an attachment from the public (REST API, embeds, Elementor
+ * dynamic images) when the page it's "attached to" is trashed, private or a
+ * draft. Unattached (parent 0) or attached to a published item = visible.
+ */
+function bl_img_parent_is_public( $id ) {
+	$parent = (int) wp_get_post_parent_id( $id );
+	if ( ! $parent ) {
+		return true;
+	}
+	$p = get_post( $parent );
+	return $p && in_array( $p->post_status, array( 'publish', 'inherit' ), true );
+}
+
+/** Detach an image from a non-public parent (files, URLs and metadata unchanged). */
+function bl_img_make_public( $id, $why ) {
+	if ( bl_img_parent_is_public( $id ) ) {
+		return false;
+	}
+	$parent = (int) wp_get_post_parent_id( $id );
+	$status = $parent ? get_post_status( $parent ) : 'missing';
+	wp_update_post( array( 'ID' => (int) $id, 'post_parent' => 0 ) );
+	clean_post_cache( (int) $id );
+	bl_img_ledger_append( 'detach_hidden_parent', array( 'parent' => $parent, 'parent_status' => $status ? $status : 'missing', 'reason' => $why ), (int) $id );
+	return true;
+}
+
+/** Keeper preference: publicly visible → has provenance → most used → most pixels → WebP → oldest. */
 function bl_img_keeper_cmp( $a, $b ) {
+	// Never prefer a copy the public can't see (attached to a trashed/private page).
+	$va = ! empty( $a['public'] );
+	$vb = ! empty( $b['public'] );
+	if ( $va !== $vb ) {
+		return $va ? -1 : 1;
+	}
 	if ( $a['provenance'] !== $b['provenance'] ) {
 		return $a['provenance'] ? -1 : 1;
 	}
@@ -257,6 +291,8 @@ function bl_img_consolidate( $keeper, $dups ) {
 		update_post_meta( $d, '_bl_img_consolidated_into', $keeper );
 	}
 	$rels = array_values( array_unique( array_filter( array_map( 'intval', $rels ) ) ) );
+	// The keeper now serves every page the duplicates served — make sure the public can see it.
+	bl_img_make_public( $keeper, 'consolidate keeper' );
 	if ( $rels ) {
 		bl_img_link_releases( $keeper, $rels, false );
 	}
@@ -620,6 +656,20 @@ function bl_img_repair_ids() {
 		set_theme_mod( 'custom_logo', $map[ (int) $tm['custom_logo'] ] );
 		$fixed++;
 		$details[] = 'Theme logo';
+	}
+
+	// 4. Images that are in use but hidden from the public because the page they're
+	//    "attached to" is trashed / private / a draft (or gone) → detach them.
+	$hidden = $wpdb->get_col( "SELECT a.ID FROM {$wpdb->posts} a LEFT JOIN {$wpdb->posts} p ON p.ID = a.post_parent
+		WHERE a.post_type = 'attachment' AND a.post_mime_type LIKE 'image/%' AND a.post_parent > 0
+		AND ( p.ID IS NULL OR p.post_status IN ('trash','private','draft','pending','future','auto-draft') )
+		AND ( EXISTS (SELECT 1 FROM {$wpdb->postmeta} t WHERE t.meta_key = '_thumbnail_id' AND t.meta_value = a.ID)
+		      OR EXISTS (SELECT 1 FROM " . bl_img_usage_table() . " u WHERE u.attachment_id = a.ID) )" );
+	foreach ( $hidden as $hid ) {
+		if ( bl_img_make_public( (int) $hid, 'repair: in use but attached to a non-public page' ) ) {
+			$fixed++;
+			$details[] = get_the_title( $hid ) . ' (#' . $hid . '): detached from a trashed/private page so the public can see it';
+		}
 	}
 
 	$undo_id = '';
