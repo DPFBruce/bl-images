@@ -780,6 +780,75 @@
       });
     }
 
+    // Broken-image scan: crawl every public page (from the sitemap), check every image, fix.
+    var scanBox = h('div');
+    var scanOut = h('div');
+    var scanBtn = btn('Scan whole site for broken images', function () {
+      var S = { urls: [], i: 0, imgs: {}, css: {}, res: {} };
+      var re = /(?:https?:\/\/[^\/"'\s]+)?(\/wp-content\/uploads\/[^"'\s)<>?#,\\]+?\.(?:jpe?g|png|gif|webp|avif|svg))/gi;
+      var cssre = /\/wp-content\/uploads\/elementor\/css\/[^"'\s?]+\.css/gi;
+      var cssUrl = /url\(\s*['"]?(?:https?:\/\/[^\/'")]+)?(\/wp-content\/uploads\/[^'")?#]+?\.(?:jpe?g|png|gif|webp|avif|svg))/gi;
+      function add(p, page) { p = decodeURI(p); (S.imgs[p] = S.imgs[p] || {})[page] = 1; }
+      function txt(u) { return fetch(u, { credentials: 'omit' }).then(function (r) { return r.ok ? r.text() : ''; }).catch(function () { return ''; }); }
+      busy(scanBtn, true, 'Reading sitemap…'); clear(scanOut);
+      txt('/sitemap_index.xml').then(function (idx) {
+        var maps = (idx.match(/<loc>[^<]+<\/loc>/g) || []).map(function (m) { return m.replace(/<\/?loc>/g, ''); });
+        if (!maps.length) maps = ['/wp-sitemap.xml'];
+        return Promise.all(maps.map(txt)).then(function (xs) {
+          xs.forEach(function (x) { (x.match(/<loc>[^<]+<\/loc>/g) || []).forEach(function (m) { var u = m.replace(/<\/?loc>/g, ''); if (!/\.(jpe?g|png|webp|gif)$/i.test(u) && !/sitemap.*\.xml$/.test(u)) S.urls.push(u); }); });
+          S.urls = S.urls.filter(function (u, i, a) { return a.indexOf(u) === i; });
+          if (S.urls.indexOf(location.origin + '/') < 0) S.urls.unshift(location.origin + '/');
+        });
+      }).then(function crawl() {
+        if (S.i >= S.urls.length) return;
+        var batch = S.urls.slice(S.i, S.i + 6); S.i += batch.length;
+        busy(scanBtn, true, 'Scanning pages… ' + S.i + ' / ' + S.urls.length);
+        return Promise.all(batch.map(function (u) { return txt(u).then(function (h) { var m; re.lastIndex = 0; while ((m = re.exec(h))) add(m[1], u); var c = h.match(cssre) || []; c.forEach(function (x) { (S.css[x] = S.css[x] || {})[u] = 1; }); }); })).then(crawl);
+      }).then(function () {
+        busy(scanBtn, true, 'Reading Elementor styles…');
+        return Promise.all(Object.keys(S.css).map(function (cf) { return txt(cf).then(function (t) { var m; cssUrl.lastIndex = 0; while ((m = cssUrl.exec(t))) Object.keys(S.css[cf]).forEach(function (pg) { add(m[1], pg); }); }); }));
+      }).then(function () {
+        var list = Object.keys(S.imgs), j = 0;
+        function check() {
+          if (j >= list.length) return;
+          var b = list.slice(j, j + 10); j += b.length;
+          busy(scanBtn, true, 'Checking images… ' + j + ' / ' + list.length);
+          return Promise.all(b.map(function (p) { return fetch(p, { method: 'HEAD', credentials: 'omit', cache: 'no-store', redirect: 'manual' }).then(function (r) { S.res[p] = r.type === 'opaqueredirect' ? 301 : r.status; }).catch(function () { S.res[p] = 0; }); })).then(check);
+        }
+        return check().then(function () { return list; });
+      }).then(function (list) {
+        busy(scanBtn, false);
+        var broken = list.filter(function (p) { return S.res[p] === 404; });
+        var moved = list.filter(function (p) { return S.res[p] === 301; });
+        scanOut.appendChild(h('p', { html: '<strong>' + S.urls.length + '</strong> pages · <strong>' + list.length + '</strong> images · <span class="bl-img-flag">' + broken.length + ' broken</span> · ' + moved.length + ' using an old (redirected) address' }));
+        var todo = broken.concat(moved);
+        broken.concat(moved).forEach(function (p) {
+          scanOut.appendChild(h('div', { class: 'bl-img-use' }, h('code', { text: p.replace('/wp-content/uploads/', '') }), ' ', h('span', { class: S.res[p] === 404 ? 'bl-img-flag' : 'bl-img-muted', text: S.res[p] === 404 ? 'broken' : 'old address' }), ' — ', Object.keys(S.imgs[p]).slice(0, 3).map(function (u) { return h('a', { href: u, target: '_blank', text: u.replace(location.origin, '') + ' ' }); })));
+        });
+        if (!todo.length) { toast('No broken images found.'); return; }
+        var fixB = btn('Fix all ' + todo.length, function () {
+          busy(fixB, true, 'Fixing…');
+          var k = 0, tally = { repointed: 0, restored: 0, unresolved: 0 };
+          (function next() {
+            if (k >= todo.length) { busy(fixB, false); fixB.disabled = true; scanOut.appendChild(h('p', { html: '<strong>Done:</strong> ' + tally.repointed + ' repointed to the correct image · ' + tally.restored + ' restored from the Internet Archive · ' + tally.unresolved + ' could not be recovered.' })); toast('Fix complete. Run the scan again to confirm.'); return; }
+            var b = todo.slice(k, k + 4); k += b.length;
+            busy(fixB, true, 'Fixing… ' + k + ' / ' + todo.length);
+            api('tools/fix-broken', { method: 'POST', body: { paths: b } }).then(function (d) {
+              d.results.forEach(function (x) {
+                tally[x.status] = (tally[x.status] || 0) + 1;
+                scanOut.appendChild(h('div', { class: x.status === 'unresolved' ? 'bl-img-flag' : 'bl-img-ok', text: (x.status === 'repointed' ? '✓ ' + x.path.replace('/wp-content/uploads/', '') + ' → ' + x.to.replace(/^.*\/uploads\//, '') + ' (' + x.how + ', ' + x.refs + ' ref)' : x.status === 'restored' ? '✓ restored ' + x.path.replace('/wp-content/uploads/', '') + ' from the Internet Archive (' + x.size + (x.full_fallback ? ', full-size original' : '') + ')' : '✗ ' + x.path.replace('/wp-content/uploads/', '') + ' — no copy found anywhere') }));
+              });
+              next();
+            }).catch(function (e) { busy(fixB, false); toast(e.message, true); });
+          })();
+        }, 'button-primary');
+        scanOut.appendChild(h('div', { class: 'bl-img-row' }, fixB));
+      }).catch(function (e) { busy(scanBtn, false); toast(e.message, true); });
+    }, 'button-primary');
+    scanBox.appendChild(h('p', { class: 'bl-img-muted', text: 'Visits every public page listed in the sitemap, checks every image it shows (including Elementor backgrounds and social-share images), then fixes what\'s broken: points it at the correct library image, or recovers the original from the Internet Archive.' }));
+    scanBox.appendChild(h('div', { class: 'bl-img-row' }, scanBtn));
+    scanBox.appendChild(scanOut);
+
     // Convert
     var conv = h('div');
     api('tools/convert').then(function (d) {
@@ -813,7 +882,7 @@
     drawUndo();
 
     root.appendChild(h('div', { class: 'bl-img-tools' },
-      section('Usage index', idx), section('Duplicates — find & consolidate', dupBox), section('Convert existing library to WebP', conv), section('Provenance ledger', led), section('Undo reference changes', und, false), section('Activity log', log)));
+      section('Broken images — scan whole site & fix', scanBox), section('Usage index', idx), section('Duplicates — find & consolidate', dupBox), section('Convert existing library to WebP', conv), section('Provenance ledger', led), section('Undo reference changes', und, false), section('Activity log', log)));
   }
 
   /* ================================================================ SETTINGS */

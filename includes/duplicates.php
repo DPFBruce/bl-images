@@ -746,3 +746,284 @@ function bl_img_repair_content_batch( $offset, $size = 120 ) {
 	}
 	return array( 'next' => $offset + count( $ids ), 'total' => $total, 'done' => $done, 'fixed' => $fixed );
 }
+
+/* ================================================================== *
+ *  Fix broken image URLs found by a site crawl
+ * ================================================================== *
+ * For each broken (404) or redirected (301) uploads URL:
+ *   1. Find what it SHOULD be: the redirect table target, a live library image
+ *      with the same file name (any folder, incl. migration "-1" copies), or the
+ *      keeper of an archived duplicate with that name — at the closest size.
+ *      → rewrite every reference (content, meta incl. Yoast/Elementor, options,
+ *        Yoast's indexable table) old URL → new URL. Undoable + ledgered.
+ *   2. If nothing in the library matches: recover the ORIGINAL file from the
+ *      Internet Archive (Wayback Machine) and put it back at its exact old path,
+ *      so the page works unchanged. Hash + source recorded in the ledger.
+ */
+
+function bl_img_best_size_url( $att, $want_w ) {
+	$urls = bl_img_attachment_urls( $att );
+	if ( ! $want_w || empty( $urls ) ) {
+		return isset( $urls['full'] ) ? $urls['full'] : '';
+	}
+	$meta = wp_get_attachment_metadata( $att );
+	$best = $urls['full'];
+	$bd   = isset( $meta['width'] ) ? abs( (int) $meta['width'] - $want_w ) : PHP_INT_MAX;
+	foreach ( (array) ( isset( $meta['sizes'] ) ? $meta['sizes'] : array() ) as $name => $s ) {
+		if ( isset( $urls[ $name ] ) && abs( (int) $s['width'] - $want_w ) < $bd ) {
+			$bd   = abs( (int) $s['width'] - $want_w );
+			$best = $urls[ $name ];
+		}
+	}
+	return $best;
+}
+
+/** Resolve one broken uploads path to a replacement URL (or ''). */
+function bl_img_resolve_broken( $path ) {
+	global $wpdb;
+	$path = '/' . ltrim( $path, '/' );
+	// a) Redirect table (removed duplicate).
+	$to = bl_img_redirect_target( bl_img_redirect_key( $path ) );
+	if ( $to ) {
+		return array( 'url' => $to, 'how' => 'removed duplicate → keeper' );
+	}
+	$file = basename( $path );
+	if ( ! preg_match( '/^(.*?)(?:-(\d+)x(\d+))?(?:-scaled)?\.([a-z0-9]+)$/i', $file, $m ) ) {
+		return null;
+	}
+	$stem = $m[1];
+	$want = (int) $m[2];
+	// b) Live attachment with the same file stem (any folder; also stem-1, stem-2 migration copies).
+	$like = '%' . $wpdb->esc_like( '/' . $stem ) . '%';
+	$rows = $wpdb->get_results( $wpdb->prepare( "SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = '_wp_attached_file' AND ( meta_value LIKE %s OR meta_value LIKE %s )", $like, $wpdb->esc_like( $stem ) . '%' ), ARRAY_A );
+	foreach ( $rows as $r ) {
+		$s = preg_replace( '/-scaled$/', '', pathinfo( $r['meta_value'], PATHINFO_FILENAME ) );
+		if ( 0 === strcasecmp( $s, $stem ) || preg_match( '/^' . preg_quote( $stem, '/' ) . '-\d$/i', $s ) ) {
+			if ( bl_img_is_image_attachment( (int) $r['post_id'] ) ) {
+				$u = bl_img_best_size_url( (int) $r['post_id'], $want );
+				if ( $u && wp_make_link_relative( $u ) !== $path ) {
+					return array( 'url' => $u, 'how' => 'library image #' . (int) $r['post_id'] );
+				}
+			}
+		}
+	}
+	// b2) Same photo, slightly different name: strip WordPress's "-e<timestamp>" edit
+	//     suffix and "-1"/"-2" copy suffixes on both sides, require exact equality.
+	$base = strtolower( preg_replace( array( '/-e\d{10,}$/', '/-\d$/' ), '', $stem ) );
+	if ( strlen( $base ) >= 6 ) {
+		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = '_wp_attached_file' AND meta_value LIKE %s", '%' . $wpdb->esc_like( $base ) . '%' ), ARRAY_A );
+		foreach ( $rows as $r ) {
+			$s = strtolower( preg_replace( array( '/-scaled$/', '/-e\d{10,}$/', '/-\d$/', '/-e\d{10,}$/' ), '', pathinfo( $r['meta_value'], PATHINFO_FILENAME ) ) );
+			if ( $s === $base && bl_img_is_image_attachment( (int) $r['post_id'] ) ) {
+				$u = bl_img_best_size_url( (int) $r['post_id'], $want );
+				if ( $u && wp_make_link_relative( $u ) !== $path ) {
+					return array( 'url' => $u, 'how' => 'same photo, library image #' . (int) $r['post_id'] );
+				}
+			}
+		}
+	}
+	// c) Archived duplicate with that name → its keeper.
+	foreach ( (array) glob( bl_img_vault_dir() . '/consolidated/*/record.json' ) as $f ) {
+		$d = json_decode( file_get_contents( $f ), true );
+		foreach ( array_keys( (array) ( isset( $d['files'] ) ? $d['files'] : array() ) ) as $fn ) {
+			if ( 0 === strcasecmp( preg_replace( '/-scaled$/', '', pathinfo( $fn, PATHINFO_FILENAME ) ), $stem ) && ! empty( $d['keeper'] ) && bl_img_is_image_attachment( (int) $d['keeper'] ) ) {
+				return array( 'url' => bl_img_best_size_url( (int) $d['keeper'], $want ), 'how' => 'archived duplicate → keeper #' . (int) $d['keeper'] );
+			}
+		}
+	}
+	return null;
+}
+
+/** Rewrite one old URL → new URL everywhere it's stored. */
+function bl_img_replace_url_everywhere( $old_path, $new_url, $reason ) {
+	global $wpdb;
+	$host    = untrailingslashit( home_url() );
+	$old_abs = $host . '/' . ltrim( $old_path, '/' );
+	$map     = array( $old_abs => $new_url );
+	$alt     = 0 === strpos( $old_abs, 'https:' ) ? 'http:' . substr( $old_abs, 6 ) : '';
+	if ( $alt ) {
+		$map[ $alt ] = $new_url;
+	}
+	$map[ '/' . ltrim( $old_path, '/' ) ] = wp_make_link_relative( $new_url );
+	uksort( $map, function ( $a, $b ) { return strlen( $b ) - strlen( $a ); } );
+	$needle  = '%' . $wpdb->esc_like( basename( $old_path ) ) . '%';
+	$undo    = array();
+	$n       = 0;
+	foreach ( $wpdb->get_results( $wpdb->prepare( "SELECT ID, post_content, post_excerpt FROM {$wpdb->posts} WHERE post_content LIKE %s OR post_excerpt LIKE %s", $needle, $needle ), ARRAY_A ) as $p ) {
+		$nc = bl_img_rewrite_value( $p['post_content'], $map, array() );
+		$ne = bl_img_rewrite_value( $p['post_excerpt'], $map, array() );
+		if ( $nc !== $p['post_content'] || $ne !== $p['post_excerpt'] ) {
+			$undo[] = array( 'type' => 'post', 'id' => (int) $p['ID'], 'post_content' => $p['post_content'], 'post_excerpt' => $p['post_excerpt'] );
+			$wpdb->update( $wpdb->posts, array( 'post_content' => $nc, 'post_excerpt' => $ne ), array( 'ID' => $p['ID'] ) );
+			clean_post_cache( (int) $p['ID'] );
+			delete_post_meta( (int) $p['ID'], '_elementor_css' );
+			$n++;
+		}
+	}
+	foreach ( $wpdb->get_results( $wpdb->prepare( "SELECT meta_id, post_id, meta_key, meta_value FROM {$wpdb->postmeta} WHERE meta_value LIKE %s AND meta_key NOT IN ('_wp_attached_file','_wp_attachment_metadata')", $needle ), ARRAY_A ) as $r ) {
+		$nv = bl_img_rewrite_value( $r['meta_value'], $map, array(), $r['meta_key'] );
+		if ( $nv !== $r['meta_value'] ) {
+			$undo[] = array( 'type' => 'meta', 'meta_id' => (int) $r['meta_id'], 'post_id' => (int) $r['post_id'], 'meta_value' => $r['meta_value'] );
+			$wpdb->update( $wpdb->postmeta, array( 'meta_value' => $nv ), array( 'meta_id' => $r['meta_id'] ) );
+			wp_cache_delete( (int) $r['post_id'], 'post_meta' );
+			delete_post_meta( (int) $r['post_id'], '_elementor_css' );
+			$n++;
+		}
+	}
+	foreach ( $wpdb->get_results( $wpdb->prepare( "SELECT option_name, option_value FROM {$wpdb->options} WHERE option_value LIKE %s AND option_name NOT LIKE %s", $needle, '%transient%' ), ARRAY_A ) as $o ) {
+		$nv = bl_img_rewrite_value( $o['option_value'], $map, array() );
+		if ( $nv !== $o['option_value'] ) {
+			$undo[] = array( 'type' => 'option', 'name' => $o['option_name'], 'option_value' => $o['option_value'] );
+			$wpdb->update( $wpdb->options, array( 'option_value' => $nv ), array( 'option_name' => $o['option_name'] ) );
+			wp_cache_delete( $o['option_name'], 'options' );
+			$n++;
+		}
+	}
+	wp_cache_delete( 'alloptions', 'options' );
+	// Yoast SEO keeps its own copy of social-share images.
+	$yt = $wpdb->prefix . 'yoast_indexable';
+	if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $yt ) ) === $yt ) {
+		foreach ( array( 'open_graph_image', 'twitter_image', 'open_graph_image_meta' ) as $col ) {
+			foreach ( array( $old_abs, $alt ) as $from ) {
+				if ( $from ) {
+					$n += (int) $wpdb->query( $wpdb->prepare( "UPDATE $yt SET $col = REPLACE($col, %s, %s) WHERE $col LIKE %s", $from, $new_url, '%' . $wpdb->esc_like( $from ) . '%' ) );
+					$n += (int) $wpdb->query( $wpdb->prepare( "UPDATE $yt SET $col = REPLACE($col, %s, %s) WHERE $col LIKE %s", str_replace( '/', '\\/', $from ), str_replace( '/', '\\/', $new_url ), '%' . $wpdb->esc_like( str_replace( '/', '\\/', $from ) ) . '%' ) );
+				}
+			}
+		}
+	}
+	if ( $undo ) {
+		bl_img_vault_put_json( 'undo', gmdate( 'Ymd-His' ) . '-fixurl-' . substr( md5( $old_path ), 0, 6 ) . '.json', array( 'reason' => $reason, 'at' => bl_img_now_utc(), 'by' => bl_img_current_actor(), 'url_map' => $map, 'id_map' => array(), 'rows' => $undo ) );
+	}
+	return $n;
+}
+
+/**
+ * Most recent successful (HTTP 200) Wayback capture of a URL, via the CDX index
+ * (more complete than the "available" API). Backs off once on 429 rate limits.
+ */
+function bl_img_wayback_timestamp( $url_no_scheme ) {
+	$q = 'https://web.archive.org/cdx/search/cdx?' . http_build_query( array( 'url' => $url_no_scheme, 'output' => 'json', 'filter' => 'statuscode:200', 'fl' => 'timestamp,mimetype', 'limit' => -3 ) );
+	for ( $try = 0; $try < 2; $try++ ) {
+		$r = wp_remote_get( $q, array( 'timeout' => 30, 'user-agent' => bl_img_user_agent_header() ) );
+		if ( is_wp_error( $r ) ) {
+			return '';
+		}
+		if ( 429 === (int) wp_remote_retrieve_response_code( $r ) ) {
+			sleep( 6 );
+			continue;
+		}
+		$rows = json_decode( wp_remote_retrieve_body( $r ), true );
+		if ( ! is_array( $rows ) || count( $rows ) < 2 ) {
+			return '';
+		}
+		for ( $i = count( $rows ) - 1; $i >= 1; $i-- ) {
+			if ( 0 === strpos( (string) $rows[ $i ][1], 'image/' ) ) {
+				return (string) $rows[ $i ][0];
+			}
+		}
+		return '';
+	}
+	return '';
+}
+
+/** Domains the site has lived on (the Internet Archive indexes by domain). */
+function bl_img_archive_hosts() {
+	$h = array( wp_parse_url( home_url(), PHP_URL_HOST ), 'deathpenalty.org' ); // the Archive folds www. into the bare domain
+	return array_values( array_unique( array_filter( apply_filters( 'bl_images_archive_hosts', $h ) ) ) );
+}
+
+/** Recover a lost file from the Wayback Machine to its exact original path. */
+function bl_img_restore_from_wayback( $path ) {
+	$path = '/' . ltrim( $path, '/' );
+	$up   = wp_upload_dir( null, false );
+	$rel  = preg_replace( '#^.*?/uploads/#', '', $path );
+	$dest = trailingslashit( $up['basedir'] ) . $rel;
+	if ( file_exists( $dest ) || false !== strpos( $rel, '..' ) ) {
+		return null;
+	}
+	$abs   = untrailingslashit( home_url() ) . $path;
+	$tries = array( $abs );
+	$full  = preg_replace( '/-\d+x\d+(\.[a-z0-9]+)$/i', '$1', $abs );
+	if ( $full !== $abs ) {
+		$tries[] = $full; // fall back to the full-size original
+	}
+	// Last resort: any archived size/edit of the same photo in the same folder.
+	$base = preg_replace( array( '/-\d+x\d+$/', '/-e\d{10,}$/', '/-scaled$/' ), '', pathinfo( $full, PATHINFO_FILENAME ) );
+	$hosts = bl_img_archive_hosts();
+	foreach ( $hosts as $ahost ) {
+		if ( strlen( $base ) < 6 ) {
+			break;
+		}
+		$prefix = $ahost . preg_replace( '#^https?://[^/]+#', '', trailingslashit( dirname( $abs ) ) . $base );
+		$r      = wp_remote_get( 'https://web.archive.org/cdx/search/cdx?' . http_build_query( array( 'url' => $prefix, 'matchType' => 'prefix', 'filter' => 'statuscode:200', 'fl' => 'original,mimetype', 'collapse' => 'urlkey', 'limit' => 20 ) ), array( 'timeout' => 30, 'user-agent' => bl_img_user_agent_header() ) );
+		if ( ! is_wp_error( $r ) ) {
+			foreach ( preg_split( '/\n/', trim( wp_remote_retrieve_body( $r ) ) ) as $line ) {
+				$parts = explode( ' ', trim( $line ) );
+				if ( 2 === count( $parts ) && 0 === strpos( $parts[1], 'image/' ) ) {
+					$cand = preg_replace( '#^https?://[^/]+#', untrailingslashit( home_url() ), $parts[0] );
+					$cb   = preg_replace( array( '/-\d+x\d+$/', '/-e\d{10,}$/', '/-scaled$/' ), '', pathinfo( $cand, PATHINFO_FILENAME ) );
+					if ( 0 === strcasecmp( $cb, $base ) && ! in_array( $cand, $tries, true ) ) {
+						$tries[] = $cand;
+					}
+				}
+			}
+		}
+	}
+	foreach ( $tries as $u ) {
+		foreach ( $hosts as $host ) {
+			$src = preg_replace( '#^(https?://)[^/]+#', '$1' . $host, $u );
+			$ts  = bl_img_wayback_timestamp( preg_replace( '#^https?://#', '', $src ) );
+			if ( ! $ts ) {
+				continue;
+			}
+			$raw = 'https://web.archive.org/web/' . $ts . 'id_/' . $src;
+			$dl  = bl_img_download( $raw, 30 * 1048576 );
+			if ( is_wp_error( $dl ) ) {
+				continue;
+			}
+			$probe = bl_img_probe_image( $dl['path'] );
+			if ( is_wp_error( $probe ) ) {
+				@unlink( $dl['path'] );
+				continue;
+			}
+			wp_mkdir_p( dirname( $dest ) );
+			if ( ! rename( $dl['path'], $dest ) ) {
+				@unlink( $dl['path'] );
+				continue;
+			}
+			@chmod( $dest, 0644 );
+			$sha = hash_file( 'sha256', $dest );
+			bl_img_ledger_append( 'restore_from_wayback', array( 'path' => $path, 'wayback' => $raw, 'snapshot' => $ts, 'sha256' => $sha, 'width' => $probe[0], 'height' => $probe[1], 'used_full_size' => $u !== $abs ) );
+			return array( 'wayback' => $raw, 'size' => $probe[0] . 'x' . $probe[1], 'full_fallback' => $u !== $abs );
+		}
+	}
+	return null;
+}
+
+/** Process a batch of broken paths. */
+function bl_img_fix_broken_batch( $paths ) {
+	bl_img_raise_limits();
+	$out = array();
+	foreach ( array_slice( (array) $paths, 0, 8 ) as $path ) {
+		$path = '/' . ltrim( sanitize_text_field( $path ), '/' );
+		if ( false === strpos( $path, '/uploads/' ) ) {
+			continue;
+		}
+		$res = bl_img_resolve_broken( $path );
+		if ( $res && ! empty( $res['url'] ) ) {
+			$n = bl_img_replace_url_everywhere( $path, $res['url'], 'fix broken image ' . $path );
+			bl_img_ledger_append( 'fix_broken_url', array( 'path' => $path, 'to' => $res['url'], 'how' => $res['how'], 'references_changed' => $n ) );
+			$out[] = array( 'path' => $path, 'status' => 'repointed', 'to' => $res['url'], 'how' => $res['how'], 'refs' => $n );
+			continue;
+		}
+		$w = bl_img_restore_from_wayback( $path );
+		if ( $w ) {
+			$out[] = array( 'path' => $path, 'status' => 'restored', 'from' => $w['wayback'], 'size' => $w['size'], 'full_fallback' => $w['full_fallback'] );
+			continue;
+		}
+		$out[] = array( 'path' => $path, 'status' => 'unresolved' );
+	}
+	bl_img_purge_page_cache();
+	return $out;
+}

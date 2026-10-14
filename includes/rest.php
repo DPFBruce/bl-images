@@ -310,6 +310,10 @@ add_action( 'rest_api_init', function () {
 		$p = $r->get_json_params();
 		return bl_img_consolidate( (int) $p['keeper'], (array) $p['dups'] );
 	}, 'bl_img_can_admin' );
+	$R( '/tools/fix-broken', 'POST', function ( $r ) {
+		$p = $r->get_json_params();
+		return array( 'results' => bl_img_fix_broken_batch( isset( $p['paths'] ) ? (array) $p['paths'] : array() ) );
+	}, 'bl_img_can_admin' );
 	$R( '/tools/repair-ids', 'POST', function () {
 		return bl_img_repair_ids();
 	}, 'bl_img_can_admin' );
